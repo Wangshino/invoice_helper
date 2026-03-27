@@ -28,6 +28,8 @@
     "dayjs": "^1.11.13",
     "fast-xml-parser": "^5.0.8",
     "imapflow": "^1.0.184",
+    "invoice-ofd2json": "^1.0.6",
+    "node-machine-id": "^1.1.12",
     "nodemailer": "^7.0.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

@@ -1,0 +1,11 @@
+{
+  "files": ["src/main/index.ts", "src/preload/index.ts"],
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./out",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"]
+    }
+  }
+}

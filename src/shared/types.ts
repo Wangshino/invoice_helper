@@ -265,6 +265,31 @@ export interface MatchingResult {
 }
 
 // ============================================================
+// 解析预览 (不入库)
+// ============================================================
+
+export interface ParsePreview {
+  parsed: ParsedInvoice
+  fileType: InvoiceFileType
+  fileName: string
+}
+
+/** 发票解析中间结果 */
+export interface ParsedInvoice {
+  invoiceNumber?: string
+  invoiceCode?: string
+  invoiceDate?: string
+  invoiceType?: string
+  sellerName?: string
+  sellerTaxId?: string
+  buyerName?: string
+  buyerTaxId?: string
+  amount?: number
+  taxAmount?: number
+  totalAmount?: number
+}
+
+// ============================================================
 // 字段映射工具
 // ============================================================
 

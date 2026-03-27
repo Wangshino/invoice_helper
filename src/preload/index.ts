@@ -33,11 +33,20 @@ const api = {
     importFiles: (): Promise<IpcResult<string[]>> =>
       ipcRenderer.invoke('invoices:importFiles'),
 
-    parseFile: (filePath: string): Promise<IpcResult<Invoice | null>> =>
+    importAndParse: (filePaths: string[]): Promise<IpcResult<Invoice[]>> =>
+      ipcRenderer.invoke('invoices:importAndParse', filePaths),
+
+    parseFile: (filePath: string): Promise<IpcResult<ParsePreview | null>> =>
       ipcRenderer.invoke('invoices:parseFile', filePath),
 
     countByStatus: (): Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>> =>
       ipcRenderer.invoke('invoices:countByStatus')
+  },
+
+  // ============ ParsePreview ============
+  parseFile 毊只返回解析预览， 不会入库
+
+
   },
 
   // ============ Email Accounts ============

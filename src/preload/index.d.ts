@@ -3,6 +3,22 @@ import type {
   IpcResult,
   Invoice,
   InvoiceFilters,
+  CreateInvoiceParams
+  InvoiceFileType
+  EmailAccount
+  CreateEmailAccountParams
+  UpdateEmailAccountParams
+  Reimbursement
+  CreateReimbursementParams
+  UpdateReimbursementParams
+  ReimbursementFilters
+  MatchingResult
+} from '../shared/types'
+
+import type { ParsedInvoice } from '../services/invoice-parser'import type {
+  IpcResult,
+  Invoice,
+  InvoiceFilters,
   CreateInvoiceParams,
   EmailAccount,
   CreateEmailAccountParams,
@@ -19,9 +35,10 @@ interface IpcAPI {
     getAll: (filters?: InvoiceFilters) => Promise<IpcResult<Invoice[]>>
     getById: (id: number) => Promise<IpcResult<Invoice | null>>
     create: (params: CreateInvoiceParams) => Promise<IpcResult<{ id: number }>>
-    remove: (id: number) => Promise<IpcResult<void>>
+    remove: (id: number) => Promise<IpcResult<void>
     importFiles: () => Promise<IpcResult<string[]>>
-    parseFile: (filePath: string) => Promise<IpcResult<Invoice | null>>
+    importAndParse: (filePaths: string[]) => Promise<IpcResult<Invoice[]>>
+    parseFile: (filePath: string) => Promise<IpcResult<ParsePreview | null>
     countByStatus: () => Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>>
   }
   emailAccounts: {

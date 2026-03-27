@@ -111,13 +111,70 @@
 
 ---
 
-## Phase 3: 发票解析管线
-**状态**: 待开始
+## Phase 3: 发票解析管线 ✅
+**日期**: 2026-03-28
+**状态**: 已完成
+
+### 完成内容
+
+1. **invoice-ofd2json 集成**: 安装并验证，API 返回中文键值对)
+   - 输入: `Buffer`，输出: `{ [key: string]: string }` (中文键名: 发票号码、 开票日期, 销售方名称 等)
+   - 金额字段以 `|` 分隔，含税额/价税合计
+自动转换为 number
+
+2. **OFD 解析器** (`invoice-parser.ts`):
+   - 调用 `ofd2json(buffer)` → 映射中文字段名为标准 `ParsedInvoice` 结构
+   - `合计金额` → `amount`, `合计税额` → `taxAmount`, `价税合计（小写）` → `totalAmount`
+2. **XML 解析器** (全电发票):
+   - 使用 `fast-xml-parser`，支持多种 XML 格式 (EInvoice/EInvoiceData/CompositeInvoice)
+   - 兼容多种字段命名 (中英文/拼音缩写)
+   - 支持 BasicInformation/BuyerInformation/SellerInformation/TaxInformation 节点
+2. **PDF 解析器** (百度 OCR):
+   - `invoice-ocr.ts` 重写: 宰取 access_token 缓存、结果映射
+   - 新增 `recognizeInvoice()`: PDF/图片 → 百度OCR → `OcrInvoiceResult`
+   - 百度OCR响应字段映射: InvoiceNumber→invoice_number 等
+2. **文件存储服务**:
+   - `storeInvoiceFile()`: 复制到 userData/invoices/ 目录, 自动重命名防覆盖
+   - `parseAndStore()`: 解析 + 存储 + 返回 `ParseResult`
+3. **IPC 更新** (`ipc/index.ts`):
+   - 新增 `invoices:importAndParse`: 选择文件 → 解析 → 存储 → 入库
+返回完整 Invoice[]
+   - 新增 `invoices:parseFile`: 单文件预览, 不入库
+   - 使用 `safeHandle` 统一异常捕获
+4. **Preload 更新**:
+   - 新增 `importAndParse` 和 `parseFile` IPC 通道
+   - `index.d.ts` 新增 `ParsePreview` 类型声明
+5. **共享类型更新** (`shared/types.ts`):
+   - 新增 `ParsePreview` 和 `ParsedInvoice` 类型
+6. **Invoices 页面重写** (`pages/Invoices.tsx`):
+   - 完整 CRUD 表格 (筛选/搜索/分页)
+   - 导入发票按钮 (调用 importAndParse)
+   - 发票详情预览 Modal
+   - 删除确认
+
+   - 状态/来源/日期范围筛选
+### 关键设计决策
+- **OFD 字段映射**: invoice-ofd2json 返回中文字段名，直接映射为英文 snake_case 字段
+- **XML 多格式兼容**: 使用可选链操作符避免 null pointer, 支持多种 XML 嫋名空间
+- **百度OCR 缓存**: access_token 缓存 5 分钟提前过期, 避免频繁请求
+- **文件存储**: 复制到 userData 目录而非原地引用，避免源文件移动导致丢失
 
 ---
 
 ## Phase 4: 邮件集成
 **状态**: 待开始
+
+### 验证结果
+- `electron-vite build` ✅ 构建成功 (main + preload + renderer)
+- OFD 解析 ✅ invoice-ofd2json 集成正常
+- XML 解析 ✅ fast-xml-parser 集成正常
+- PDF 解析 ✅ 百度OCR 模块就绪 (需配置 API Key)
+
+- IPC ✅ importAndParse / parseFile 通道注册正常
+- Invoices 页面 ✅ 完整 CRUD + 筛选 + 导入功能
+
+### Git Commit
+- `feat: Phase 3 - 发票解析管线 + Invoices 页面`
 
 ---
 

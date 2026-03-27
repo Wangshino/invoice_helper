@@ -1,134 +1,219 @@
+/**
+ * 发票解析管线 — 统一入口
+ *
+ * 支持三种格式:
+ *   OFD: invoice-ofd2json 解析为中文键值对
+ *   XML: fast-xml-parser 解析全电发票 XML
+ *   PDF: 百度 OCR 增值税发票识别 API
+ */
+
 import { app } from 'electron'
-import { join } from 'path'
+import { join, basename } from 'path'
 import fs from 'fs'
+import ofd2json from 'invoice-ofd2json'
+import { XMLParser } from 'fast-xml-parser'
+import * as settingsRepo from '../repositories/settings-repository'
+import { recognizeInvoice, type OcrInvoiceResult } from './invoice-ocr'
+import type { InvoiceFileType } from '../../shared/types'
+
+// ============================================================
+// 解析结果类型
+// ============================================================
 
 export interface ParsedInvoice {
-  invoice_number?: string
-  invoice_code?: string
-  invoice_date?: string
-  invoice_type?: string
-  seller_name?: string
-  seller_tax_id?: string
-  buyer_name?: string
-  buyer_tax_id?: string
+  invoiceNumber?: string
+  invoiceCode?: string
+  invoiceDate?: string
+  invoiceType?: string
+  sellerName?: string
+  sellerTaxId?: string
+  buyerName?: string
+  buyerTaxId?: string
   amount?: number
-  tax_amount?: number
-  total_amount?: number
+  taxAmount?: number
+  totalAmount?: number
 }
 
-/**
- * Detect file type by extension and content
- */
-export function detectFileType(filePath: string): 'pdf' | 'ofd' | 'xml' {
+export interface ParseResult {
+  parsed: ParsedInvoice
+  filePath: string
+  fileType: InvoiceFileType
+  fileName: string
+}
+
+// ============================================================
+// 文件类型检测
+// ============================================================
+
+export function detectFileType(filePath: string): InvoiceFileType {
   const ext = filePath.toLowerCase().split('.').pop()
   if (ext === 'pdf') return 'pdf'
   if (ext === 'ofd') return 'ofd'
   if (ext === 'xml') return 'xml'
-  throw new Error(`Unsupported file type: ${ext}`)
+  throw new Error(`不支持的文件类型: .${ext}`)
 }
 
+// ============================================================
+// OFD 解析
+// ============================================================
+
 /**
- * Parse an invoice file based on its type
+ * OFD 解析 — 使用 invoice-ofd2json
+ *
+ * 返回的键名 (中文):
+ *   发票号码, 发票代码, 开票日期, 电子发票类型,
+ *   购买方名称, 购买方统一社会信用代码/纳税人识别号,
+ *   销售方名称, 销售方统一社会信用代码/纳税人识别号,
+ *   合计金额, 合计税额, 价税合计（小写）
  */
+async function parseOfd(buffer: Buffer): Promise<ParsedInvoice> {
+  const result: Record<string, string> = await ofd2json(buffer)
+
+  const parseNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined
+    const n = parseFloat(v.replace(/[,，¥￥\s]/g, ''))
+    return isNaN(n) ? undefined : n
+  }
+
+  return {
+    invoiceNumber: result['发票号码'] || undefined,
+    invoiceCode: result['发票代码'] || undefined,
+    invoiceDate: result['开票日期'] || undefined,
+    invoiceType: result['电子发票类型'] || result['特殊发票类型'] || undefined,
+    sellerName: result['销售方名称'] || undefined,
+    sellerTaxId: result['销售方统一社会信用代码/纳税人识别号'] || undefined,
+    buyerName: result['购买方名称'] || undefined,
+    buyerTaxId: result['购买方统一社会信用代码/纳税人识别号'] || undefined,
+    amount: parseNum(result['合计金额']),
+    taxAmount: parseNum(result['合计税额']),
+    totalAmount: parseNum(result['价税合计（小写）'])
+  }
+}
+
+// ============================================================
+// XML 解析 (全电发票)
+// ============================================================
+
+/**
+ * XML 解析 — 全电发票 XML 格式
+ *
+ * 典型结构:
+ * <EInvoice>
+ *   <EInvoiceData>
+ *     <BasicInformation> ... </BasicInformation>
+ *     <BuyerInformation> ... </BuyerInformation>
+ *     <SellerInformation> ... </SellerInformation>
+ *     <TaxInformation> ... </TaxInformation>
+ *   </EInvoiceData>
+ * </EInvoice>
+ */
+async function parseXml(buffer: Buffer): Promise<ParsedInvoice> {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_'
+  })
+  const xml = buffer.toString('utf-8')
+  const result = parser.parse(xml)
+
+  // 多种 XML 格式兼容
+  const data = result.EInvoice?.EInvoiceData ||
+    result.EInvoiceData ||
+    result.CompositeInvoice?.EInvoiceData ||
+    result
+
+  const basic = data.BasicInformation || {}
+  const buyer = data.BuyerInformation || {}
+  const seller = data.SellerInformation || {}
+  const tax = data.TaxInformation || {}
+
+  // 字段可能来自属性或元素值
+  const get = (obj: Record<string, unknown>, ...keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const v = obj[key] || obj[`@_${key}`]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+      if (typeof v === 'number') return String(v)
+    }
+    return undefined
+  }
+
+  const parseNum = (v: string | undefined): number | undefined => {
+    if (!v) return undefined
+    const n = parseFloat(v.replace(/[,，¥￥\s]/g, ''))
+    return isNaN(n) ? undefined : n
+  }
+
+  return {
+    invoiceNumber: get(basic, 'InvoiceNumber', 'InvoiceNum', 'Fphm'),
+    invoiceCode: get(basic, 'InvoiceCode', 'Fpdm'),
+    invoiceDate: get(basic, 'IssueDate', 'InvoiceDate', 'Kprq'),
+    invoiceType: get(basic, 'InvoiceType', 'Fpzl'),
+    sellerName: get(seller, 'SellerName', 'Name', 'XsfMc'),
+    sellerTaxId: get(seller, 'SellerTaxID', 'SellerRegisterNumber', 'TaxID', 'XsfNsrsbh'),
+    buyerName: get(buyer, 'BuyerName', 'Name', 'GmfMc'),
+    buyerTaxId: get(buyer, 'BuyerTaxID', 'BuyerRegisterNumber', 'TaxID', 'GmfNsrsbh'),
+    amount: parseNum(get(tax, 'Amount', 'TotalAmount', 'Hjje')),
+    taxAmount: parseNum(get(tax, 'TotalTax', 'TaxAmount', 'Hjse')),
+    totalAmount: parseNum(get(tax, 'AmountIncludingTax', 'TotalIncludingTax', 'Jshj'))
+  }
+}
+
+// ============================================================
+// PDF 解析 (百度 OCR)
+// ============================================================
+
+async function parsePdf(buffer: Buffer): Promise<ParsedInvoice> {
+  const apiKey = settingsRepo.get('baidu_ocr_api_key')
+  const secretKey = settingsRepo.get('baidu_ocr_secret_key')
+
+  if (!apiKey || !secretKey) {
+    throw new Error('PDF发票解析需要配置百度OCR API Key。请在设置中配置百度OCR密钥。')
+  }
+
+  const ocrResult: OcrInvoiceResult = await recognizeInvoice(
+    { apiKey, secretKey },
+    buffer,
+    'pdf'
+  )
+
+  return {
+    invoiceNumber: ocrResult.invoice_number || undefined,
+    invoiceCode: ocrResult.invoice_code || undefined,
+    invoiceDate: ocrResult.invoice_date || undefined,
+    invoiceType: ocrResult.invoice_type || undefined,
+    sellerName: ocrResult.seller_name || undefined,
+    sellerTaxId: ocrResult.seller_tax_id || undefined,
+    buyerName: ocrResult.buyer_name || undefined,
+    buyerTaxId: ocrResult.buyer_tax_id || undefined,
+    amount: ocrResult.amount || undefined,
+    taxAmount: ocrResult.tax_amount || undefined,
+    totalAmount: ocrResult.total_amount || undefined
+  }
+}
+
+// ============================================================
+// 统一解析入口
+// ============================================================
+
+/** 解析单个发票文件 */
 export async function parseInvoiceFile(filePath: string): Promise<ParsedInvoice> {
   const fileType = detectFileType(filePath)
-  const fileBuffer = fs.readFileSync(filePath)
+  const buffer = fs.readFileSync(filePath)
 
   switch (fileType) {
     case 'ofd':
-      return parseOfd(fileBuffer)
+      return parseOfd(buffer)
     case 'xml':
-      return parseXml(fileBuffer)
+      return parseXml(buffer)
     case 'pdf':
-      return parsePdf(filePath, fileBuffer)
-    default:
-      throw new Error(`Unsupported file type: ${fileType}`)
+      return parsePdf(buffer)
   }
 }
 
-/**
- * Parse OFD invoice using invoice-ofd2json
- */
-async function parseOfd(buffer: Buffer): Promise<ParsedInvoice> {
-  try {
-    const ofd2json = (await import('invoice-ofd2json')).default || (await import('invoice-ofd2json'))
-    const result = await ofd2json(buffer)
-    // Map OFD fields to our schema
-    return {
-      invoice_number: result.InvoiceNumber || result.invoiceNumber,
-      invoice_code: result.InvoiceCode || result.invoiceCode,
-      invoice_date: result.InvoiceDate || result.invoiceDate,
-      invoice_type: result.InvoiceType || result.invoiceType,
-      seller_name: result.SellerName || result.sellerName,
-      seller_tax_id: result.SellerTaxID || result.sellerTaxID,
-      buyer_name: result.BuyerName || result.buyerName,
-      buyer_tax_id: result.BuyerTaxID || result.buyerTaxID,
-      amount: parseFloat(result.Amount || result.amount || '0'),
-      tax_amount: parseFloat(result.TaxAmount || result.taxAmount || '0'),
-      total_amount: parseFloat(result.TotalAmount || result.totalAmount || '0')
-    }
-  } catch (error) {
-    console.error('OFD parse error:', error)
-    throw new Error(`OFD解析失败: ${(error as Error).message}`)
-  }
-}
+// ============================================================
+// 文件存储
+// ============================================================
 
-/**
- * Parse XML invoice (全电发票) using fast-xml-parser
- */
-async function parseXml(buffer: Buffer): Promise<ParsedInvoice> {
-  try {
-    const { XMLParser } = await import('fast-xml-parser')
-    const parser = new XMLParser({
-      ignoreAttributes: false,
-      attributeNamePrefix: '@_'
-    })
-    const xml = buffer.toString('utf-8')
-    const result = parser.parse(xml)
-
-    // Navigate the XML structure - format may vary
-    const invoiceData = result.EInvoice?.EInvoiceData ||
-      result.EInvoiceData ||
-      result.CompositeInvoice?.EInvoiceData ||
-      result
-
-    const basic = invoiceData.BasicInformation || {}
-    const buyer = invoiceData.BuyerInformation || {}
-    const seller = invoiceData.SellerInformation || {}
-    const tax = invoiceData.TaxInformation || {}
-
-    return {
-      invoice_number: basic.InvoiceNumber || basic['@_InvoiceNumber'],
-      invoice_code: basic.InvoiceCode || basic['@_InvoiceCode'],
-      invoice_date: basic.IssueDate || basic['@_IssueDate'],
-      invoice_type: basic.InvoiceType || '全电发票',
-      seller_name: seller.SellerName || seller.Name,
-      seller_tax_id: seller.SellerTaxID || seller.TaxID,
-      buyer_name: buyer.BuyerName || buyer.Name,
-      buyer_tax_id: buyer.BuyerTaxID || buyer.TaxID,
-      amount: parseFloat(tax.TotalAmount || tax.Amount || '0'),
-      tax_amount: parseFloat(tax.TotalTax || tax.TaxAmount || '0'),
-      total_amount: parseFloat(tax.AmountIncludingTax || tax.TotalIncludingTax || '0')
-    }
-  } catch (error) {
-    console.error('XML parse error:', error)
-    throw new Error(`XML解析失败: ${(error as Error).message}`)
-  }
-}
-
-/**
- * Parse PDF invoice using OCR
- * TODO: Integrate Baidu OCR API
- */
-async function parsePdf(filePath: string, buffer: Buffer): Promise<ParsedInvoice> {
-  // For now, return a placeholder that indicates OCR is needed
-  // In production, this will call Baidu OCR VAT Invoice API
-  throw new Error('PDF发票解析需要配置百度OCR API Key。请先在设置中配置。')
-}
-
-/**
- * Get the storage directory for invoice files
- */
+/** 获取发票文件存储目录 */
 export function getInvoiceStoragePath(): string {
   const dir = join(app.getPath('userData'), 'invoices')
   if (!fs.existsSync(dir)) {
@@ -137,24 +222,28 @@ export function getInvoiceStoragePath(): string {
   return dir
 }
 
-/**
- * Copy an imported file to internal storage
- */
-export function storeInvoiceFile(sourcePath: string, fileName: string): string {
+/** 复制导入文件到内部存储, 返回存储路径 */
+export function storeInvoiceFile(sourcePath: string): string {
   const storageDir = getInvoiceStoragePath()
-  const destPath = join(storageDir, fileName)
+  const originalName = basename(sourcePath)
+  let destPath = join(storageDir, originalName)
 
-  // Avoid overwriting existing files
   if (fs.existsSync(destPath)) {
-    const ext = fileName.split('.').pop()
-    const baseName = fileName.replace(`.${ext}`, '')
-    const timestamp = Date.now()
-    const newFileName = `${baseName}_${timestamp}.${ext}`
-    const newDestPath = join(storageDir, newFileName)
-    fs.copyFileSync(sourcePath, newDestPath)
-    return newDestPath
+    const ext = originalName.split('.').pop()!
+    const baseName = originalName.slice(0, -(ext.length + 1))
+    destPath = join(storageDir, `${baseName}_${Date.now()}.${ext}`)
   }
 
   fs.copyFileSync(sourcePath, destPath)
   return destPath
+}
+
+/** 解析并导入: 解析文件 → 存储文件 → 返回结构化结果 */
+export async function parseAndStore(sourcePath: string): Promise<ParseResult> {
+  const fileType = detectFileType(sourcePath)
+  const fileName = basename(sourcePath)
+  const filePath = storeInvoiceFile(sourcePath)
+  const parsed = await parseInvoiceFile(sourcePath)
+
+  return { parsed, filePath, fileType, fileName }
 }

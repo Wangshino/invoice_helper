@@ -4,6 +4,7 @@ import * as emailAccountRepo from '../repositories/email-account-repository'
 import * as reimbursementRepo from '../repositories/reimbursement-repository'
 import * as settingsRepo from '../repositories/settings-repository'
 import { findBestCombinations } from '../services/matching'
+import { parseAndStore, parseInvoiceFile, detectFileType } from '../services/invoice-parser'
 import { FieldMappers } from '../../shared/types'
 import type {
   IpcResult,
@@ -14,13 +15,18 @@ import type {
   EmailAccountRow,
   EmailAccount,
   CreateEmailAccountParams,
-  UpdateEmailAccountParams,
+  UpdateEmailAccountParams
   ReimbursementRow,
   Reimbursement,
   CreateReimbursementParams,
   UpdateReimbursementParams,
-  ReimbursementFilters
+  ReimbursementFilters,
+  MatchingResult,
+  InvoiceFileType,
+  ParsePreview
 } from '../../shared/types'
+import type { ParsedInvoice, from '../services/invoice-parser'
+import { basename } from 'path'
 
 // ============================================================
 // Helpers
@@ -82,7 +88,6 @@ function mapReimbursement(row: ReimbursementRow, invoices?: Invoice[]): Reimburs
 // ============================================================
 // Register All IPC Handlers
 // ============================================================
-
 export function registerIpcHandlers(): void {
   // ============ Invoices ============
 
@@ -116,9 +121,43 @@ export function registerIpcHandlers(): void {
     return result.canceled ? ok([]) : ok(result.filePaths)
   })
 
-  safeHandle<IpcResult<Invoice | null>>('invoices:parseFile', (filePath: unknown) => {
-    // TODO: Phase 3 — 接入 invoice-parser
-    return ok(null)
+  /** 解析并导入发票文件: 选择文件 → 解析 → 存储 → 入库 */
+  safeHandle<IpcResult<Invoice[]>>('invoices:importAndParse', async (filePaths: unknown) => {
+    const paths = filePaths as string[]
+    if (!Array.isArray(paths) || paths.length === 0) return ok([])
+
+    const invoices: Invoice[] = []
+    for (const sourcePath of paths) {
+      const { parsed, filePath, type } = await parseAndStore(sourcePath)
+      const id = invoiceRepo.create({
+        invoiceNumber: parsed.invoiceNumber,
+        invoiceCode: parsed.invoiceCode,
+        invoiceDate: parsed.invoiceDate,
+        invoiceType: parsed.invoiceType,
+        sellerName: parsed.sellerName,
+        sellerTaxId: parsed.sellerTaxId,
+        buyerName: parsed.buyerName,
+        buyerTaxId: parsed.buyerTaxId,
+        amount: parsed.amount,
+        taxAmount: parsed.taxAmount,
+        totalAmount: parsed.totalAmount,
+        filePath,
+        fileType: type,
+        fileName: basename(sourcePath),
+        source: 'manual'
+      })
+      const row = invoiceRepo.findById(id)
+      if (row) invoices.push(mapInvoice(row))
+    }
+    return ok(invoices)
+  })
+
+  /** 解析单个文件预览, 不入库 */
+  safeHandle<IpcResult<ParsePreview>>('invoices:parseFile', async (filePath: unknown) => {
+    const path = String(filePath)
+    const fileType = detectFileType(path)
+    const parsed = await parseInvoiceFile(path)
+    return ok({ parsed, fileType, fileName: basename(path) })
   })
 
   safeHandle<IpcResult<{ status: string; count: number; totalAmount: number }[]>>(
@@ -176,7 +215,7 @@ export function registerIpcHandlers(): void {
     const row = reimbursementRepo.findById(Number(id))
     if (!row) return ok(null)
     const invoiceRows = reimbursementRepo.findInvoices(Number(id))
-    return ok(mapReimbursement(row, mapInvoices(invoiceRows)))
+    return ok(mapReimbursement(row, mapInvoices(invoiceRows))
   })
 
   safeHandle<IpcResult<{ id: number }>>('reimbursements:create', (params: CreateReimbursementParams) => {
@@ -217,9 +256,9 @@ export function registerIpcHandlers(): void {
       id: inv.id,
       total_amount: inv.total_amount ?? 0,
       invoice_number: inv.invoice_number,
-      invoice_date: inv.invoice_date,
+      invoice_date: inv.invoice_date
       seller_name: inv.seller_name
-    }))
+    })
 
     const results = findBestCombinations(candidates, amount)
     return ok(results as unknown as MatchingResult[])
@@ -228,7 +267,7 @@ export function registerIpcHandlers(): void {
   // ============ Settings ============
 
   safeHandle<IpcResult<string | undefined>>('settings:get', (key: unknown) => {
-    return ok(settingsRepo.get(String(key)))
+    return ok(settingsRepo.get(String(key))
   })
 
   safeHandle<IpcResult<void>>('settings:set', (key: unknown, value: unknown) => {
@@ -236,7 +275,7 @@ export function registerIpcHandlers(): void {
     return ok(undefined)
   })
 
-  safeHandle<IpcResult<Record<string, string>>>('settings:getAll', () => {
+  safeHandle<IpcResult<Record<string, string>>('settings:getAll', () => {
     return ok(settingsRepo.getAll())
   })
 }

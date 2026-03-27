@@ -1,42 +1,109 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type {
+  IpcResult,
+  Invoice,
+  InvoiceFilters,
+  CreateInvoiceParams,
+  EmailAccount,
+  CreateEmailAccountParams,
+  UpdateEmailAccountParams,
+  Reimbursement,
+  CreateReimbursementParams,
+  UpdateReimbursementParams,
+  ReimbursementFilters,
+  MatchingResult
+} from '../shared/types'
 
 const api = {
-  // Invoice operations
+  // ============ Invoices ============
   invoices: {
-    getAll: (filters?: Record<string, unknown>) => ipcRenderer.invoke('invoices:getAll', filters),
-    getById: (id: number) => ipcRenderer.invoke('invoices:getById', id),
-    create: (invoice: Record<string, unknown>) => ipcRenderer.invoke('invoices:create', invoice),
-    update: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('invoices:update', id, data),
-    remove: (id: number) => ipcRenderer.invoke('invoices:delete', id),
-    importFiles: () => ipcRenderer.invoke('invoices:importFiles'),
-    parseFile: (filePath: string) => ipcRenderer.invoke('invoices:parseFile', filePath)
+    getAll: (filters?: InvoiceFilters): Promise<IpcResult<Invoice[]>> =>
+      ipcRenderer.invoke('invoices:getAll', filters),
+
+    getById: (id: number): Promise<IpcResult<Invoice | null>> =>
+      ipcRenderer.invoke('invoices:getById', id),
+
+    create: (params: CreateInvoiceParams): Promise<IpcResult<{ id: number }>> =>
+      ipcRenderer.invoke('invoices:create', params),
+
+    remove: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('invoices:remove', id),
+
+    importFiles: (): Promise<IpcResult<string[]>> =>
+      ipcRenderer.invoke('invoices:importFiles'),
+
+    parseFile: (filePath: string): Promise<IpcResult<Invoice | null>> =>
+      ipcRenderer.invoke('invoices:parseFile', filePath),
+
+    countByStatus: (): Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>> =>
+      ipcRenderer.invoke('invoices:countByStatus')
   },
 
-  // Email account operations
+  // ============ Email Accounts ============
   emailAccounts: {
-    getAll: () => ipcRenderer.invoke('emailAccounts:getAll'),
-    create: (account: Record<string, unknown>) => ipcRenderer.invoke('emailAccounts:create', account),
-    update: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('emailAccounts:update', id, data),
-    remove: (id: number) => ipcRenderer.invoke('emailAccounts:delete', id),
-    testConnection: (config: Record<string, unknown>) => ipcRenderer.invoke('emailAccounts:testConnection', config),
-    syncEmails: (accountId: number) => ipcRenderer.invoke('emailAccounts:syncEmails', accountId)
+    getAll: (): Promise<IpcResult<EmailAccount[]>> =>
+      ipcRenderer.invoke('emailAccounts:getAll'),
+
+    getById: (id: number): Promise<IpcResult<EmailAccount | null>> =>
+      ipcRenderer.invoke('emailAccounts:getById', id),
+
+    create: (params: CreateEmailAccountParams): Promise<IpcResult<{ id: number }>> =>
+      ipcRenderer.invoke('emailAccounts:create', params),
+
+    update: (id: number, data: UpdateEmailAccountParams): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('emailAccounts:update', id, data),
+
+    remove: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('emailAccounts:remove', id),
+
+    testConnection: (params: CreateEmailAccountParams): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('emailAccounts:testConnection', params),
+
+    syncEmails: (accountId: number): Promise<IpcResult<Invoice[]>> =>
+      ipcRenderer.invoke('emailAccounts:syncEmails', accountId)
   },
 
-  // Reimbursement operations
+  // ============ Reimbursements ============
   reimbursements: {
-    getAll: (filters?: Record<string, unknown>) => ipcRenderer.invoke('reimbursements:getAll', filters),
-    getById: (id: number) => ipcRenderer.invoke('reimbursements:getById', id),
-    create: (data: Record<string, unknown>) => ipcRenderer.invoke('reimbursements:create', data),
-    update: (id: number, data: Record<string, unknown>) => ipcRenderer.invoke('reimbursements:update', id, data),
-    remove: (id: number) => ipcRenderer.invoke('reimbursements:delete', id),
-    sendEmail: (id: number, emailTo: string) => ipcRenderer.invoke('reimbursements:sendEmail', id, emailTo)
+    getAll: (filters?: ReimbursementFilters): Promise<IpcResult<Reimbursement[]>> =>
+      ipcRenderer.invoke('reimbursements:getAll', filters),
+
+    getById: (id: number): Promise<IpcResult<Reimbursement | null>> =>
+      ipcRenderer.invoke('reimbursements:getById', id),
+
+    create: (params: CreateReimbursementParams): Promise<IpcResult<{ id: number }>> =>
+      ipcRenderer.invoke('reimbursements:create', params),
+
+    update: (id: number, params: UpdateReimbursementParams): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('reimbursements:update', id, params),
+
+    remove: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('reimbursements:remove', id),
+
+    sendEmail: (id: number, emailTo: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('reimbursements:sendEmail', id, emailTo),
+
+    countByStatus: (): Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>> =>
+      ipcRenderer.invoke('reimbursements:countByStatus')
   },
 
-  // Matching
+  // ============ Matching ============
   matching: {
-    findBestCombinations: (targetAmount: number, dateRange?: [string, string]) =>
-      ipcRenderer.invoke('matching:findBestCombinations', targetAmount, dateRange)
+    findBestCombinations: (targetAmount: number): Promise<IpcResult<MatchingResult[]>> =>
+      ipcRenderer.invoke('matching:findBestCombinations', targetAmount)
+  },
+
+  // ============ Settings ============
+  settings: {
+    get: (key: string): Promise<IpcResult<string | undefined>> =>
+      ipcRenderer.invoke('settings:get', key),
+
+    set: (key: string, value: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('settings:set', key, value),
+
+    getAll: (): Promise<IpcResult<Record<string, string>>> =>
+      ipcRenderer.invoke('settings:getAll')
   }
 }
 

@@ -1,256 +1,242 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { getDb } from '../services/database'
+import * as invoiceRepo from '../repositories/invoice-repository'
+import * as emailAccountRepo from '../repositories/email-account-repository'
+import * as reimbursementRepo from '../repositories/reimbursement-repository'
+import * as settingsRepo from '../repositories/settings-repository'
+import { findBestCombinations } from '../services/matching'
+import { FieldMappers } from '../../shared/types'
+import type {
+  IpcResult,
+  InvoiceRow,
+  Invoice,
+  InvoiceFilters,
+  CreateInvoiceParams,
+  EmailAccountRow,
+  EmailAccount,
+  CreateEmailAccountParams,
+  UpdateEmailAccountParams,
+  ReimbursementRow,
+  Reimbursement,
+  CreateReimbursementParams,
+  UpdateReimbursementParams,
+  ReimbursementFilters
+} from '../../shared/types'
+
+// ============================================================
+// Helpers
+// ============================================================
+
+function ok<T>(data: T): IpcResult<T> {
+  return { success: true, data }
+}
+
+function err(message: string): IpcResult<never> {
+  return { success: false, error: message }
+}
+
+/** 安全执行 IPC handler, 捕获异常 */
+function safeHandle<T>(
+  channel: string,
+  handler: (...args: unknown[]) => T
+): void {
+  ipcMain.handle(channel, async (_event, ...args) => {
+    try {
+      const result = handler(...args)
+      return result instanceof Promise ? await result : result
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      console.error(`[IPC ${channel}] Error:`, message)
+      return err(message)
+    }
+  })
+}
+
+/** 转换发票行 (snake_case → camelCase) */
+function mapInvoice(row: InvoiceRow): Invoice {
+  return FieldMappers.invoice.toCamel(row as unknown as Record<string, unknown>)
+}
+
+function mapInvoices(rows: InvoiceRow[]): Invoice[] {
+  return FieldMappers.invoice.toList(rows as unknown as Record<string, unknown>[])
+}
+
+/** 转换邮箱账户行 (去掉 password 字段) */
+function mapEmailAccount(row: EmailAccountRow): EmailAccount {
+  const { password: _, ...rest } = row
+  return FieldMappers.emailAccount.toCamel(rest as unknown as Record<string, unknown>) as EmailAccount
+}
+
+function mapEmailAccounts(rows: EmailAccountRow[]): EmailAccount[] {
+  return rows.map(mapEmailAccount)
+}
+
+/** 转换报销单行 */
+function mapReimbursement(row: ReimbursementRow, invoices?: Invoice[]): Reimbursement {
+  const mapped = FieldMappers.reimbursement.toCamel(
+    row as unknown as Record<string, unknown>
+  ) as Reimbursement
+  if (invoices) mapped.invoices = invoices
+  return mapped
+}
+
+// ============================================================
+// Register All IPC Handlers
+// ============================================================
 
 export function registerIpcHandlers(): void {
   // ============ Invoices ============
-  ipcMain.handle('invoices:getAll', (_event, filters?: Record<string, unknown>) => {
-    const db = getDb()
-    let sql = 'SELECT * FROM invoices WHERE 1=1'
-    const params: unknown[] = []
 
-    if (filters?.status) {
-      sql += ' AND status = ?'
-      params.push(filters.status)
-    }
-    if (filters?.dateFrom) {
-      sql += ' AND invoice_date >= ?'
-      params.push(filters.dateFrom)
-    }
-    if (filters?.dateTo) {
-      sql += ' AND invoice_date <= ?'
-      params.push(filters.dateTo)
-    }
-    if (filters?.source) {
-      sql += ' AND source = ?'
-      params.push(filters.source)
-    }
-
-    sql += ' ORDER BY invoice_date DESC, created_at DESC'
-    return db.prepare(sql).all(...params)
+  safeHandle<IpcResult<Invoice[]>>('invoices:getAll', (filters?: InvoiceFilters) => {
+    const rows = invoiceRepo.findAll(filters)
+    return ok(mapInvoices(rows))
   })
 
-  ipcMain.handle('invoices:getById', (_event, id: number) => {
-    const db = getDb()
-    return db.prepare('SELECT * FROM invoices WHERE id = ?').get(id)
+  safeHandle<IpcResult<Invoice | null>>('invoices:getById', (id: unknown) => {
+    const row = invoiceRepo.findById(Number(id))
+    return row ? ok(mapInvoice(row)) : ok(null)
   })
 
-  ipcMain.handle('invoices:create', (_event, invoice: Record<string, unknown>) => {
-    const db = getDb()
-    const stmt = db.prepare(`
-      INSERT INTO invoices (invoice_number, invoice_code, invoice_date, invoice_type,
-        seller_name, seller_tax_id, buyer_name, buyer_tax_id,
-        amount, tax_amount, total_amount, file_path, file_type, file_name, source)
-      VALUES (@invoice_number, @invoice_code, @invoice_date, @invoice_type,
-        @seller_name, @seller_tax_id, @buyer_name, @buyer_tax_id,
-        @amount, @tax_amount, @total_amount, @file_path, @file_type, @file_name, @source)
-    `)
-    const result = stmt.run(invoice)
-    return { id: result.lastInsertRowid }
+  safeHandle<IpcResult<{ id: number }>>('invoices:create', (params: CreateInvoiceParams) => {
+    const id = invoiceRepo.create(params)
+    return ok({ id })
   })
 
-  ipcMain.handle('invoices:update', (_event, id: number, data: Record<string, unknown>) => {
-    const db = getDb()
-    const fields = Object.keys(data)
-    const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
-    const stmt = db.prepare(`UPDATE invoices SET ${setClause} WHERE id = @id`)
-    stmt.run({ ...data, id })
+  safeHandle<IpcResult<void>>('invoices:remove', (id: unknown) => {
+    invoiceRepo.remove(Number(id))
+    return ok(undefined)
   })
 
-  ipcMain.handle('invoices:delete', (_event, id: number) => {
-    const db = getDb()
-    db.prepare('DELETE FROM invoices WHERE id = ?').run(id)
-  })
-
-  ipcMain.handle('invoices:importFiles', async () => {
-    const result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()!, {
+  safeHandle<IpcResult<string[]>>('invoices:importFiles', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return err('No focused window')
+    const result = await dialog.showOpenDialog(win, {
       properties: ['openFile', 'multiSelections'],
-      filters: [
-        { name: '发票文件', extensions: ['pdf', 'ofd', 'xml'] }
-      ]
+      filters: [{ name: '发票文件', extensions: ['pdf', 'ofd', 'xml'] }]
     })
-    if (result.canceled) return []
-    return result.filePaths
+    return result.canceled ? ok([]) : ok(result.filePaths)
   })
+
+  safeHandle<IpcResult<Invoice | null>>('invoices:parseFile', (filePath: unknown) => {
+    // TODO: Phase 3 — 接入 invoice-parser
+    return ok(null)
+  })
+
+  safeHandle<IpcResult<{ status: string; count: number; totalAmount: number }[]>>(
+    'invoices:countByStatus',
+    () => {
+      return ok(invoiceRepo.countByStatus())
+    }
+  )
 
   // ============ Email Accounts ============
-  ipcMain.handle('emailAccounts:getAll', () => {
-    const db = getDb()
-    return db.prepare('SELECT id, name, email, imap_host, imap_port, smtp_host, smtp_port, last_sync_uid, created_at FROM email_accounts ORDER BY created_at').all()
+
+  safeHandle<IpcResult<EmailAccount[]>>('emailAccounts:getAll', () => {
+    const rows = emailAccountRepo.findAll()
+    return ok(mapEmailAccounts(rows))
   })
 
-  ipcMain.handle('emailAccounts:create', (_event, account: Record<string, unknown>) => {
-    const db = getDb()
-    const stmt = db.prepare(`
-      INSERT INTO email_accounts (name, email, imap_host, imap_port, smtp_host, smtp_port, password)
-      VALUES (@name, @email, @imap_host, @imap_port, @smtp_host, @smtp_port, @password)
-    `)
-    const result = stmt.run(account)
-    return { id: result.lastInsertRowid }
+  safeHandle<IpcResult<EmailAccount | null>>('emailAccounts:getById', (id: unknown) => {
+    const row = emailAccountRepo.findById(Number(id))
+    return row ? ok(mapEmailAccount(row)) : ok(null)
   })
 
-  ipcMain.handle('emailAccounts:update', (_event, id: number, data: Record<string, unknown>) => {
-    const db = getDb()
-    const fields = Object.keys(data)
-    const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
-    const stmt = db.prepare(`UPDATE email_accounts SET ${setClause} WHERE id = @id`)
-    stmt.run({ ...data, id })
+  safeHandle<IpcResult<{ id: number }>>('emailAccounts:create', (params: CreateEmailAccountParams) => {
+    const id = emailAccountRepo.create(params)
+    return ok({ id })
   })
 
-  ipcMain.handle('emailAccounts:delete', (_event, id: number) => {
-    const db = getDb()
-    db.prepare('DELETE FROM email_accounts WHERE id = ?').run(id)
+  safeHandle<IpcResult<void>>('emailAccounts:update', (id: unknown, data: UpdateEmailAccountParams) => {
+    emailAccountRepo.update(Number(id), data)
+    return ok(undefined)
   })
 
-  ipcMain.handle('emailAccounts:testConnection', async (_event, _config: Record<string, unknown>) => {
-    // TODO: implement IMAP connection test
-    return true
+  safeHandle<IpcResult<void>>('emailAccounts:remove', (id: unknown) => {
+    emailAccountRepo.remove(Number(id))
+    return ok(undefined)
   })
 
-  ipcMain.handle('emailAccounts:syncEmails', async (_event, _accountId: number) => {
-    // TODO: implement email sync with imapflow
-    return []
+  safeHandle<IpcResult<boolean>>('emailAccounts:testConnection', async () => {
+    // TODO: Phase 4 — IMAP 连接测试
+    return ok(true)
+  })
+
+  safeHandle<IpcResult<Invoice[]>>('emailAccounts:syncEmails', async () => {
+    // TODO: Phase 4 — 邮件同步导入
+    return ok([])
   })
 
   // ============ Reimbursements ============
-  ipcMain.handle('reimbursements:getAll', (_event, filters?: Record<string, unknown>) => {
-    const db = getDb()
-    let sql = 'SELECT * FROM reimbursements WHERE 1=1'
-    const params: unknown[] = []
 
-    if (filters?.status) {
-      sql += ' AND status = ?'
-      params.push(filters.status)
+  safeHandle<IpcResult<Reimbursement[]>>('reimbursements:getAll', (filters?: ReimbursementFilters) => {
+    const rows = reimbursementRepo.findAll(filters)
+    return ok(rows.map((r) => mapReimbursement(r)))
+  })
+
+  safeHandle<IpcResult<Reimbursement | null>>('reimbursements:getById', (id: unknown) => {
+    const row = reimbursementRepo.findById(Number(id))
+    if (!row) return ok(null)
+    const invoiceRows = reimbursementRepo.findInvoices(Number(id))
+    return ok(mapReimbursement(row, mapInvoices(invoiceRows)))
+  })
+
+  safeHandle<IpcResult<{ id: number }>>('reimbursements:create', (params: CreateReimbursementParams) => {
+    const id = reimbursementRepo.create(params)
+    return ok({ id })
+  })
+
+  safeHandle<IpcResult<void>>('reimbursements:update', (id: unknown, params: UpdateReimbursementParams) => {
+    reimbursementRepo.update(Number(id), params)
+    return ok(undefined)
+  })
+
+  safeHandle<IpcResult<void>>('reimbursements:remove', (id: unknown) => {
+    reimbursementRepo.remove(Number(id))
+    return ok(undefined)
+  })
+
+  safeHandle<IpcResult<void>>('reimbursements:sendEmail', async () => {
+    // TODO: Phase 6 — 发送报销邮件
+    return ok(undefined)
+  })
+
+  safeHandle<IpcResult<{ status: string; count: number; totalAmount: number }[]>>(
+    'reimbursements:countByStatus',
+    () => {
+      return ok(reimbursementRepo.countByStatus())
     }
-
-    sql += ' ORDER BY date DESC, created_at DESC'
-    return db.prepare(sql).all(...params)
-  })
-
-  ipcMain.handle('reimbursements:getById', (_event, id: number) => {
-    const db = getDb()
-    const reimbursement = db.prepare('SELECT * FROM reimbursements WHERE id = ?').get(id)
-    if (reimbursement) {
-      const invoices = db.prepare(`
-        SELECT i.* FROM invoices i
-        JOIN reimbursement_invoices ri ON i.id = ri.invoice_id
-        WHERE ri.reimbursement_id = ?
-      `).all(id)
-      return { ...reimbursement, invoices }
-    }
-    return null
-  })
-
-  ipcMain.handle('reimbursements:create', (_event, data: Record<string, unknown>) => {
-    const db = getDb()
-    const { invoiceIds, ...reimbursementData } = data
-
-    const insertReimbursement = db.prepare(`
-      INSERT INTO reimbursements (title, reason, target_amount, actual_amount, date, status)
-      VALUES (@title, @reason, @target_amount, @actual_amount, @date, @status)
-    `)
-
-    const insertReimbursementInvoice = db.prepare(`
-      INSERT OR IGNORE INTO reimbursement_invoices (reimbursement_id, invoice_id) VALUES (?, ?)
-    `)
-
-    const updateInvoiceStatus = db.prepare(`
-      UPDATE invoices SET status = 'reimbursed', reimbursement_id = ? WHERE id = ?
-    `)
-
-    const transaction = db.transaction(() => {
-      const result = insertReimbursement.run(reimbursementData)
-      const reimbursementId = result.lastInsertRowid
-
-      const ids = (invoiceIds as number[]) || []
-      for (const invoiceId of ids) {
-        insertReimbursementInvoice.run(reimbursementId, invoiceId)
-        updateInvoiceStatus.run(reimbursementId, invoiceId)
-      }
-
-      return { id: reimbursementId }
-    })
-
-    return transaction()
-  })
-
-  ipcMain.handle('reimbursements:update', (_event, id: number, data: Record<string, unknown>) => {
-    const db = getDb()
-    const fields = Object.keys(data).filter((f) => f !== 'invoiceIds')
-    if (fields.length > 0) {
-      const setClause = fields.map((f) => `${f} = @${f}`).join(', ')
-      const stmt = db.prepare(`UPDATE reimbursements SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = @id`)
-      stmt.run({ ...data, id })
-    }
-  })
-
-  ipcMain.handle('reimbursements:delete', (_event, id: number) => {
-    const db = getDb()
-    const transaction = db.transaction(() => {
-      // Reset invoice statuses
-      db.prepare('UPDATE invoices SET status = \'unreimbursed\', reimbursement_id = NULL WHERE reimbursement_id = ?').run(id)
-      // Delete associations
-      db.prepare('DELETE FROM reimbursement_invoices WHERE reimbursement_id = ?').run(id)
-      // Delete reimbursement
-      db.prepare('DELETE FROM reimbursements WHERE id = ?').run(id)
-    })
-    transaction()
-  })
-
-  ipcMain.handle('reimbursements:sendEmail', async (_event, _id: number, _emailTo: string) => {
-    // TODO: implement email sending with nodemailer
-  })
+  )
 
   // ============ Matching ============
-  ipcMain.handle('matching:findBestCombinations', (_event, targetAmount: number, _dateRange?: [string, string]) => {
-    const db = getDb()
-    // Get unreimbursed invoices
-    const invoices = db.prepare(
-      "SELECT * FROM invoices WHERE status = 'unreimbursed' AND total_amount IS NOT NULL ORDER BY invoice_date DESC"
-    ).all() as Array<{ id: number; total_amount: number; [key: string]: unknown }>
 
-    // Filter out invoices larger than target
-    const candidates = invoices.filter((inv) => inv.total_amount <= targetAmount)
-    if (candidates.length === 0) return []
+  safeHandle<IpcResult<MatchingResult[]>>('matching:findBestCombinations', (targetAmount: unknown) => {
+    const amount = Number(targetAmount)
+    if (isNaN(amount) || amount <= 0) return ok([])
 
-    // Dynamic programming subset sum
-    const target = Math.round(targetAmount * 100) // Convert to cents for integer math
-    const amounts = candidates.map((c) => Math.round(c.total_amount * 100))
+    const unreimbursed = invoiceRepo.findAll({ status: 'unreimbursed' })
+    const candidates = unreimbursed.map((inv) => ({
+      id: inv.id,
+      total_amount: inv.total_amount ?? 0,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      seller_name: inv.seller_name
+    }))
 
-    // dp[sum] = { combination: indices, count: number of invoices }
-    const dp = new Map<number, { indices: number[] }>()
-    dp.set(0, { indices: [] })
+    const results = findBestCombinations(candidates, amount)
+    return ok(results as unknown as MatchingResult[])
+  })
 
-    for (let i = 0; i < amounts.length; i++) {
-      const currentAmount = amounts[i]
-      const entries = Array.from(dp.entries()).sort((a, b) => b[0] - a[0])
+  // ============ Settings ============
 
-      for (const [sum, data] of entries) {
-        const newSum = sum + currentAmount
-        if (newSum > target) continue
-        if (!dp.has(newSum) && data.indices.length < 20) {
-          dp.set(newSum, { indices: [...data.indices, i] })
-        }
-      }
-    }
+  safeHandle<IpcResult<string | undefined>>('settings:get', (key: unknown) => {
+    return ok(settingsRepo.get(String(key)))
+  })
 
-    // Find top 3 closest sums
-    const sortedSums = Array.from(dp.keys())
-      .filter((s) => s > 0)
-      .sort((a, b) => b - a)
-      .slice(0, 3)
+  safeHandle<IpcResult<void>>('settings:set', (key: unknown, value: unknown) => {
+    settingsRepo.set(String(key), String(value))
+    return ok(undefined)
+  })
 
-    const results = sortedSums.map((sum) => {
-      const { indices } = dp.get(sum)!
-      const combination = indices.map((idx) => candidates[idx])
-      return {
-        totalAmount: sum / 100,
-        invoices: combination,
-        invoiceCount: combination.length,
-        difference: targetAmount - sum / 100,
-        isExact: sum === target
-      }
-    })
-
-    return results
+  safeHandle<IpcResult<Record<string, string>>>('settings:getAll', () => {
+    return ok(settingsRepo.getAll())
   })
 }

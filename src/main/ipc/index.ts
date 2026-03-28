@@ -426,7 +426,18 @@ export function registerIpcHandlers(): void {
     }))
 
     const results = findBestCombinations(candidates, amount)
-    return ok(results as unknown as MatchingResult[])
+
+    // Map InvoiceCandidate back to full Invoice objects
+    const invoiceMap = new Map(unreimbursed.map((inv) => [inv.id, mapInvoice(inv)]))
+    const mapped = results.map((r) => ({
+      totalAmount: r.totalAmount,
+      invoiceCount: r.invoiceCount,
+      difference: r.difference,
+      isExact: r.isExact,
+      invoices: r.invoices.map((c) => invoiceMap.get(c.id)).filter(Boolean)
+    }))
+
+    return ok(mapped as unknown as MatchingResult[])
   })
 
   // ============ Settings ============

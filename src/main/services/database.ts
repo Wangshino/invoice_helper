@@ -9,7 +9,7 @@ let db: Database.Database | null = null
 // Schema Migrations
 // ============================================================
 
-const MIGRATIONS: Map<number, string> = new Map([
+const MIGRATIONS = new Map<number, string>([
   [
     1,
     `
@@ -89,9 +89,30 @@ const MIGRATIONS: Map<number, string> = new Map([
     );
     `
   ]
-  // 后续迁移在此添加:
-  // [2, 'ALTER TABLE invoices ADD COLUMN check_code TEXT;'],
 ])
+
+// 后续迁移在此添加:
+MIGRATIONS.set(2, `
+  ALTER TABLE email_accounts ADD COLUMN mail_folder TEXT NOT NULL DEFAULT 'INBOX';
+  ALTER TABLE email_accounts ADD COLUMN sync_limit INTEGER NOT NULL DEFAULT 200;
+`)
+
+MIGRATIONS.set(3, `
+  CREATE TABLE IF NOT EXISTS sync_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_account_id INTEGER NOT NULL,
+    scanned INTEGER NOT NULL DEFAULT 0,
+    imported INTEGER NOT NULL DEFAULT 0,
+    skipped INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    full_log TEXT,
+    synced_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(email_account_id) REFERENCES email_accounts(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sync_logs_account ON sync_logs(email_account_id);
+  CREATE INDEX IF NOT EXISTS idx_sync_logs_date ON sync_logs(synced_at);
+`)
 
 // ============================================================
 // Initialization

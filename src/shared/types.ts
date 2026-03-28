@@ -50,6 +50,8 @@ export interface EmailAccountRow {
   smtp_host: string
   smtp_port: number
   password: string
+  mail_folder: string
+  sync_limit: number
   last_sync_uid: number | null
   created_at: string
 }
@@ -63,6 +65,8 @@ export interface EmailAccount {
   imapPort: number
   smtpHost: string
   smtpPort: number
+  mailFolder: string
+  syncLimit: number
   lastSyncUid: number | null
   createdAt: string
 }
@@ -76,6 +80,8 @@ export interface CreateEmailAccountParams {
   smtpHost: string
   smtpPort?: number
   password: string
+  mailFolder?: string
+  syncLimit?: number
 }
 
 /** 更新邮箱账户参数 */
@@ -86,6 +92,8 @@ export interface UpdateEmailAccountParams {
   smtpHost?: string
   smtpPort?: number
   password?: string
+  mailFolder?: string
+  syncLimit?: number
 }
 
 /** 邮箱预设配置 */
@@ -265,6 +273,56 @@ export interface MatchingResult {
 }
 
 // ============================================================
+// 导入结果
+// ============================================================
+
+export interface ImportSummary {
+  invoices: Invoice[]
+  skipped: { fileName: string; invoiceNumber: string }[]
+  failed: { fileName: string; error: string }[]
+}
+
+// ============================================================
+// 邮件同步结果
+// ============================================================
+
+export interface EmailSyncResult {
+  imported: Invoice[]
+  skipped: Array<{ fileName: string; invoiceNumber?: string; reason: string }>
+  failed: Array<{ fileName: string; error: string }>
+  totalScanned: number
+  lastSyncUid: number
+}
+
+// ============================================================
+// 同步日志
+// ============================================================
+
+/** 同步日志 — 数据库行 (snake_case) */
+export interface SyncLogRow {
+  id: number
+  email_account_id: number
+  scanned: number
+  imported: number
+  skipped: number
+  failed: number
+  full_log: string | null
+  synced_at: string
+}
+
+/** 同步日志 — 渲染进程实体 (camelCase) */
+export interface SyncLog {
+  id: number
+  emailAccountId: number
+  scanned: number
+  imported: number
+  skipped: number
+  failed: number
+  fullLog: string | null
+  syncedAt: string
+}
+
+// ============================================================
 // 解析预览 (不入库)
 // ============================================================
 
@@ -319,8 +377,16 @@ const EMAIL_ACCOUNT_FIELD_MAP: Record<string, string> = {
   imap_port: 'imapPort',
   smtp_host: 'smtpHost',
   smtp_port: 'smtpPort',
+  mail_folder: 'mailFolder',
+  sync_limit: 'syncLimit',
   last_sync_uid: 'lastSyncUid',
   created_at: 'createdAt'
+}
+
+const SYNC_LOG_FIELD_MAP: Record<string, string> = {
+  email_account_id: 'emailAccountId',
+  full_log: 'fullLog',
+  synced_at: 'syncedAt'
 }
 
 const REIMBURSEMENT_FIELD_MAP: Record<string, string> = {
@@ -333,7 +399,7 @@ const REIMBURSEMENT_FIELD_MAP: Record<string, string> = {
 }
 
 /** 通用: 将 snake_case 对象转换为 camelCase */
-function toCamelCase<T>(row: Record<string, unknown>, fieldMap: Record<string, string>): T {
+function toCamel<T>(row: Record<string, unknown>, fieldMap: Record<string, string>): T {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(row)) {
     result[fieldMap[key] || key] = value
@@ -369,5 +435,9 @@ export const FieldMappers = {
   reimbursement: {
     toCamel: (row: Record<string, unknown>) => toCamel<Reimbursement>(row, REIMBURSEMENT_FIELD_MAP),
     toList: (rows: Record<string, unknown>[]) => mapRows<Reimbursement>(rows, REIMBURSEMENT_FIELD_MAP)
+  },
+  syncLog: {
+    toCamel: (row: Record<string, unknown>) => toCamel<SyncLog>(row, SYNC_LOG_FIELD_MAP),
+    toList: (rows: Record<string, unknown>[]) => mapRows<SyncLog>(rows, SYNC_LOG_FIELD_MAP)
   }
 }

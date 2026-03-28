@@ -12,7 +12,11 @@ import type {
   CreateReimbursementParams,
   UpdateReimbursementParams,
   ReimbursementFilters,
-  MatchingResult
+  MatchingResult,
+  ParsePreview,
+  ImportSummary,
+  EmailSyncResult,
+  SyncLog
 } from '../shared/types'
 
 const api = {
@@ -33,20 +37,23 @@ const api = {
     importFiles: (): Promise<IpcResult<string[]>> =>
       ipcRenderer.invoke('invoices:importFiles'),
 
-    importAndParse: (filePaths: string[]): Promise<IpcResult<Invoice[]>> =>
+    importAndParse: (filePaths: string[]): Promise<IpcResult<ImportSummary>> =>
       ipcRenderer.invoke('invoices:importAndParse', filePaths),
 
     parseFile: (filePath: string): Promise<IpcResult<ParsePreview | null>> =>
       ipcRenderer.invoke('invoices:parseFile', filePath),
 
     countByStatus: (): Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>> =>
-      ipcRenderer.invoke('invoices:countByStatus')
-  },
+      ipcRenderer.invoke('invoices:countByStatus'),
 
-  // ============ ParsePreview ============
-  parseFile 毊只返回解析预览， 不会入库
+    openFile: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('invoices:openFile', id),
 
+    batchDelete: (ids: number[]): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('invoices:batchDelete', ids),
 
+    exportFiles: (ids: number[]): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('invoices:exportFiles', ids)
   },
 
   // ============ Email Accounts ============
@@ -69,8 +76,50 @@ const api = {
     testConnection: (params: CreateEmailAccountParams): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('emailAccounts:testConnection', params),
 
-    syncEmails: (accountId: number): Promise<IpcResult<Invoice[]>> =>
-      ipcRenderer.invoke('emailAccounts:syncEmails', accountId)
+    syncEmails: (accountId: number): Promise<IpcResult<EmailSyncResult>> =>
+      ipcRenderer.invoke('emailAccounts:syncEmails', accountId),
+
+    testConnectionById: (accountId: number): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('emailAccounts:testConnectionById', accountId),
+
+    listFolders: (params: { imapHost: string; imapPort: number; email: string; password: string }): Promise<IpcResult<string[]>> =>
+      ipcRenderer.invoke('emailAccounts:listFolders', params),
+
+    listFoldersById: (accountId: number): Promise<IpcResult<string[]>> =>
+      ipcRenderer.invoke('emailAccounts:listFoldersById', accountId),
+
+    resetSync: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('emailAccounts:resetSync', id)
+  },
+
+  // ============ Email Sync ============
+  emailSync: {
+    getLog: (): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('emailSync:getLog'),
+
+    clearLog: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('emailSync:clearLog'),
+
+    setDebug: (enabled: boolean): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('emailSync:setDebug', enabled)
+  },
+
+  // ============ Sync Logs ============
+  syncLogs: {
+    getAll: (accountId?: number): Promise<IpcResult<SyncLog[]>> =>
+      ipcRenderer.invoke('syncLogs:getAll', accountId),
+
+    getById: (id: number): Promise<IpcResult<SyncLog | null>> =>
+      ipcRenderer.invoke('syncLogs:getById', id),
+
+    remove: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('syncLogs:remove', id),
+
+    clearAll: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('syncLogs:clearAll'),
+
+    clearByAccount: (accountId: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('syncLogs:clearByAccount', accountId)
   },
 
   // ============ Reimbursements ============

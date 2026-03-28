@@ -31,9 +31,10 @@ export function getDecryptedPassword(id: string): string {
 export function create(params: CreateEmailAccountParams): number {
   const db = getDb()
   const encryptedPassword = encrypt(params.password)
+  console.log(`[emailAccountRepo] create: name="${params.name}", email="${params.email}", password length=${params.password?.length ?? 0}`)
   const stmt = db.prepare(`
-    INSERT INTO email_accounts (name, email, imap_host, imap_port, smtp_host, smtp_port, password)
-    VALUES (@name, @email, @imapHost, @imapPort, @smtpHost, @smtpPort, @password)
+    INSERT INTO email_accounts (name, email, imap_host, imap_port, smtp_host, smtp_port, password, mail_folder, sync_limit)
+    VALUES (@name, @email, @imapHost, @imapPort, @smtpHost, @smtpPort, @password, @mailFolder, @syncLimit)
   `)
   const result = stmt.run({
     name: params.name,
@@ -42,8 +43,11 @@ export function create(params: CreateEmailAccountParams): number {
     imapPort: params.imapPort ?? 993,
     smtpHost: params.smtpHost,
     smtpPort: params.smtpPort ?? 465,
-    password: encryptedPassword
+    password: encryptedPassword,
+    mailFolder: params.mailFolder ?? 'INBOX',
+    syncLimit: params.syncLimit ?? 200
   })
+  console.log(`[emailAccountRepo] create: id=${result.lastInsertRowid}`)
   return Number(result.lastInsertRowid)
 }
 
@@ -59,6 +63,8 @@ export function update(id: number, data: Partial<CreateEmailAccountParams>): voi
   if (data.smtpHost !== undefined) { fields.push('smtp_host = @smtpHost'); values.smtpHost = data.smtpHost }
   if (data.smtpPort !== undefined) { fields.push('smtp_port = @smtpPort'); values.smtpPort = data.smtpPort }
   if (data.password !== undefined) { fields.push('password = @password'); values.password = encrypt(data.password) }
+  if (data.mailFolder !== undefined) { fields.push('mail_folder = @mailFolder'); values.mailFolder = data.mailFolder }
+  if (data.syncLimit !== undefined) { fields.push('sync_limit = @syncLimit'); values.syncLimit = data.syncLimit }
 
   if (fields.length === 0) return
   db.prepare(`UPDATE email_accounts SET ${fields.join(', ')} WHERE id = @id`).run(values)
@@ -66,6 +72,10 @@ export function update(id: number, data: Partial<CreateEmailAccountParams>): voi
 
 export function updateLastSyncUid(id: number, uid: number): void {
   getDb().prepare('UPDATE email_accounts SET last_sync_uid = ? WHERE id = ?').run(uid, id)
+}
+
+export function resetLastSyncUid(id: number): void {
+  getDb().prepare('UPDATE email_accounts SET last_sync_uid = NULL WHERE id = ?').run(id)
 }
 
 export function remove(id: number): void {

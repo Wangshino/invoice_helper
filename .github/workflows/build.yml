@@ -41,8 +41,6 @@ jobs:
         run: npm ci
 
       - name: Build & package
-        env:
-          ELECTRON_BUILDER_DISABLE_PUBLISH: true
         run: ${{ matrix.build_cmd }}
 
       - name: Upload artifacts

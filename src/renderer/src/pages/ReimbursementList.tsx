@@ -22,14 +22,17 @@ import {
   EditOutlined,
   SendOutlined,
   UndoOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  FilePdfOutlined,
+  FileTextOutlined as FileXmlOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
-import type { Reimbursement, ReimbursementStatus, SentEmail } from '../../../shared/types'
+import type { Invoice, Reimbursement, ReimbursementStatus, SentEmail } from '../../../shared/types'
 import { DEFAULT_EMAIL_TEMPLATE } from '../../../shared/types'
 import type { EmailTemplateData } from '../../../shared/types'
+import InvoicePreview from '../components/InvoicePreview'
 
 const { Title, Text } = Typography
 
@@ -57,6 +60,10 @@ export default function ReimbursementList(): React.ReactElement {
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([])
   const [sentEmailDetail, setSentEmailDetail] = useState<SentEmail | null>(null)
   const [sentDetailOpen, setSentDetailOpen] = useState(false)
+
+  // Invoice detail modal
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false)
+  const [invoiceDetailData, setInvoiceDetailData] = useState<Invoice | null>(null)
 
   // Load reimbursements
   const loadList = useCallback(async () => {
@@ -106,16 +113,6 @@ export default function ReimbursementList(): React.ReactElement {
       setDetailOpen(true)
     } else {
       message.error('加载详情失败')
-    }
-  }
-
-  const handleStatusChange = async (id: number, status: ReimbursementStatus): Promise<void> => {
-    const result = await window.api.reimbursements.update(id, { status })
-    if (result.success) {
-      message.success('状态已更新')
-      loadList()
-    } else {
-      message.error('更新失败: ' + (result.error || '未知错误'))
     }
   }
 
@@ -227,64 +224,79 @@ export default function ReimbursementList(): React.ReactElement {
   // ===================== Columns =====================
 
   const columns: ColumnsType<Reimbursement> = [
-    { title: '标题', dataIndex: 'title', key: 'title', width: 200, ellipsis: true },
-    { title: '报销事由', dataIndex: 'reason', key: 'reason', ellipsis: true },
+    {
+      title: '标题',
+      dataIndex: 'title',
+      key: 'title',
+      width: 220,
+      ellipsis: { showTitle: false },
+      render: (v: string, record: Reimbursement) => (
+        <Text
+          strong
+          style={{ color: '#1890ff', cursor: 'pointer' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleViewDetail(record.id)
+          }}
+        >
+          {v}
+        </Text>
+      )
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
+      render: (status: string) => {
+        const s = statusMap[status] || { color: 'default', text: status }
+        return <Tag color={s.color} style={{ margin: 0, borderRadius: 4 }}>{s.text}</Tag>
+      }
+    },
     {
       title: '目标金额',
       dataIndex: 'targetAmount',
       key: 'targetAmount',
       width: 120,
-      render: (v: number) => <Text>¥{v.toFixed(2)}</Text>
+      sorter: (a, b) => a.targetAmount - b.targetAmount,
+      render: (v: number) => <Text strong style={{ fontSize: 14 }}>¥{v.toFixed(2)}</Text>
     },
     {
       title: '实际金额',
       dataIndex: 'actualAmount',
       key: 'actualAmount',
       width: 120,
-      render: (v: number | null) => v != null ? <Text type="success">¥{v.toFixed(2)}</Text> : '-'
+      render: (v: number | null) =>
+        v != null ? <Text style={{ color: '#52c41a', fontWeight: 500 }}>¥{v.toFixed(2)}</Text> : <Text type="secondary">-</Text>
     },
-    { title: '日期', dataIndex: 'date', key: 'date', width: 120 },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => {
-        const s = statusMap[status] || { color: 'default', text: status }
-        return <Tag color={s.color}>{s.text}</Tag>
-      }
+      title: '报销事由',
+      dataIndex: 'reason',
+      key: 'reason',
+      ellipsis: { showTitle: false }
+    },
+    {
+      title: '日期',
+      dataIndex: 'date',
+      key: 'date',
+      width: 110
     },
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 120,
+      align: 'center',
       render: (_: unknown, record: Reimbursement) => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record.id)}>
-            详情
-          </Button>
+        <Space size={4} onClick={(e) => e.stopPropagation()}>
           {(record.status === 'draft' || record.status === 'sent') && (
             <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handleOpenSendModal(record)}>
               发送
             </Button>
           )}
           {record.status === 'draft' && (
-            <>
-              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate('/reimbursement/create')}>
-                编辑
-              </Button>
-              <Select
-                size="small"
-                value={record.status}
-                style={{ width: 90 }}
-                onChange={(v) => handleStatusChange(record.id, v)}
-              >
-                <Select.Option value="draft">草稿</Select.Option>
-                <Select.Option value="sent">已发送</Select.Option>
-                <Select.Option value="approved">已批准</Select.Option>
-                <Select.Option value="rejected">已驳回</Select.Option>
-              </Select>
-            </>
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate('/reimbursement/create')}>
+              编辑
+            </Button>
           )}
           <Popconfirm title="确认删除此报销单？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
@@ -365,7 +377,12 @@ export default function ReimbursementList(): React.ReactElement {
                   dataSource={reimbursements}
                   rowKey="id"
                   loading={loading}
+                  onRow={(record) => ({
+                    onClick: () => handleViewDetail(record.id),
+                    style: { cursor: 'pointer', transition: 'background 0.15s' }
+                  })}
                   pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+                  size="middle"
                   locale={{ emptyText: '暂无报销单，点击「新建报销单」开始' }}
                 />
               </>
@@ -430,11 +447,32 @@ export default function ReimbursementList(): React.ReactElement {
                   pagination={false}
                   dataSource={detailData.invoices}
                   rowKey="id"
+                  onRow={(record: Invoice) => ({
+                    onClick: () => {
+                      setInvoiceDetailData(record)
+                      setInvoiceDetailOpen(true)
+                    },
+                    style: { cursor: 'pointer', transition: 'background 0.15s' }
+                  })}
                   columns={[
                     { title: '发票号码', dataIndex: 'invoiceNumber', width: 200, render: (v: string | null) => v || '-' },
                     { title: '销方名称', dataIndex: 'sellerName', ellipsis: true },
                     { title: '金额', dataIndex: 'totalAmount', width: 120, render: (v: number | null) => v != null ? `¥${v.toFixed(2)}` : '-' },
-                    { title: '日期', dataIndex: 'invoiceDate', width: 120 }
+                    { title: '日期', dataIndex: 'invoiceDate', width: 120 },
+                    {
+                      title: '类型',
+                      key: 'fileType',
+                      width: 50,
+                      align: 'center',
+                      render: (_: unknown, record: Invoice) => {
+                        const iconMap: Record<string, React.ReactNode> = {
+                          pdf: <FilePdfOutlined style={{ color: '#f5222d' }} />,
+                          ofd: <FileXmlOutlined style={{ color: '#fa8c16' }} />,
+                          xml: <FileXmlOutlined style={{ color: '#52c41a' }} />
+                        }
+                        return iconMap[record.fileType] || null
+                      }
+                    }
                   ]}
                 />
               </>
@@ -540,6 +578,79 @@ export default function ReimbursementList(): React.ReactElement {
               style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #e8e8e8', padding: 12, borderRadius: 4 }}
               dangerouslySetInnerHTML={{ __html: sentEmailDetail.bodyHtml }}
             />
+          </div>
+        )}
+      </Modal>
+
+      {/* Invoice Detail Modal */}
+      <Modal
+        title={
+          <Space>
+            {invoiceDetailData && (() => {
+              const iconMap: Record<string, React.ReactNode> = {
+                pdf: <FilePdfOutlined style={{ color: '#f5222d' }} />,
+                ofd: <FileXmlOutlined style={{ color: '#fa8c16' }} />,
+                xml: <FileXmlOutlined style={{ color: '#52c41a' }} />
+              }
+              return iconMap[invoiceDetailData.fileType] || null
+            })()}
+            <span>发票详情</span>
+            {invoiceDetailData?.invoiceNumber && (
+              <Text type="secondary" style={{ fontWeight: 'normal', fontSize: 13 }}>
+                {invoiceDetailData.invoiceNumber}
+              </Text>
+            )}
+          </Space>
+        }
+        open={invoiceDetailOpen}
+        onCancel={() => setInvoiceDetailOpen(false)}
+        width={960}
+        footer={<Button onClick={() => setInvoiceDetailOpen(false)}>关闭</Button>}
+      >
+        {invoiceDetailData && (
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <InvoicePreview invoice={invoiceDetailData} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label="发票号码">
+                  <Text copyable>{invoiceDetailData.invoiceNumber || '-'}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="开票日期">{invoiceDetailData.invoiceDate || '-'}</Descriptions.Item>
+                <Descriptions.Item label="发票类型">{invoiceDetailData.invoiceType || '-'}</Descriptions.Item>
+                <Descriptions.Item label="销方名称">{invoiceDetailData.sellerName || '-'}</Descriptions.Item>
+                <Descriptions.Item label="销方税号">
+                  <Text copyable>{invoiceDetailData.sellerTaxId || '-'}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="购方名称">{invoiceDetailData.buyerName || '-'}</Descriptions.Item>
+                <Descriptions.Item label="购方税号">
+                  <Text copyable>{invoiceDetailData.buyerTaxId || '-'}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="金额">
+                  {invoiceDetailData.amount != null ? `¥${invoiceDetailData.amount.toFixed(2)}` : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="税额">
+                  {invoiceDetailData.taxAmount != null ? `¥${invoiceDetailData.taxAmount.toFixed(2)}` : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="价税合计">
+                  <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
+                    {invoiceDetailData.totalAmount != null ? `¥${invoiceDetailData.totalAmount.toFixed(2)}` : '-'}
+                  </Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="状态">
+                  <Tag color={invoiceDetailData.status === 'reimbursed' ? 'success' : 'warning'}>
+                    {invoiceDetailData.status === 'reimbursed' ? '已报销' : '未报销'}
+                  </Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="文件类型">
+                  {invoiceDetailData.fileType?.toUpperCase() || '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="来源">
+                  {invoiceDetailData.source === 'email' ? '邮件导入' : '手动导入'}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
           </div>
         )}
       </Modal>

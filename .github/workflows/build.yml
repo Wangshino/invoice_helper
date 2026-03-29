@@ -26,6 +26,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python & setuptools
+        if: runner.os == 'macOS'
+        run: pip3 install setuptools
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

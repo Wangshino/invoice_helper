@@ -1,9 +1,19 @@
-import { app, shell, BrowserWindow, Menu } from 'electron'
+import { app, shell, BrowserWindow, Menu, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase, getDb } from './services/database'
 import { registerIpcHandlers } from './ipc'
 import { initUpdater, registerUpdaterIpc } from './services/updater'
+
+// Add error logging
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error)
+  dialog.showErrorBox('Error', error.message)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+})
 
 // ============================================================
 // Window State Persistence (using SQLite settings table)

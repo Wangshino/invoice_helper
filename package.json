@@ -30,7 +30,7 @@
     "@tiptap/starter-kit": "^3.21.0",
     "adm-zip": "^0.5.16",
     "antd": "^6.3.4",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.8.0",
     "dayjs": "^1.11.13",
     "electron-updater": "^6.8.3",
     "fast-xml-parser": "^5.0.8",

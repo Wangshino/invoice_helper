@@ -50,4 +50,3 @@ publish:
   provider: github
   owner: Wangshino
   repo: invoice_helper
-npmRebuild: false

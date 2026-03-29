@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app } from 'electron'
 import * as invoiceRepo from '../repositories/invoice-repository'
 import * as emailAccountRepo from '../repositories/email-account-repository'
 import * as reimbursementRepo from '../repositories/reimbursement-repository'
@@ -567,5 +567,15 @@ export function registerIpcHandlers(): void {
 
   safeHandle<IpcResult<Record<string, string>>>('settings:getAll', () => {
     return ok(settingsRepo.getAll())
+  })
+
+  // ============ App Info ============
+
+  safeHandle<IpcResult<string>>('app:getVersion', () => {
+    return ok(app.getVersion())
+  })
+
+  ipcMain.on('app:openExternal', (_event, url: string) => {
+    shell.openExternal(url)
   })
 }

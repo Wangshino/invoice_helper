@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase, closeDatabase, getDb } from './services/database'
 import { registerIpcHandlers } from './ipc'
+import { initUpdater, registerUpdaterIpc } from './services/updater'
 
 // ============================================================
 // Window State Persistence (using SQLite settings table)
@@ -166,8 +167,13 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   registerIpcHandlers()
+  registerUpdaterIpc()
 
   createWindow()
+
+  // Init auto-updater (after window creation)
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) initUpdater(win)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

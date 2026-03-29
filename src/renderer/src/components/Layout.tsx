@@ -270,17 +270,20 @@ export default function Layout({ children }: LayoutProps): React.ReactElement {
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 16px',
-              fontSize: 28,
-              boxShadow: `0 4px 12px ${token.colorPrimaryBg}`
+              boxShadow: `0 4px 12px ${token.colorPrimaryBg}`,
+              overflow: 'hidden'
             }}
           >
-            🧾
+            <img src="/icon.png" alt="icon" style={{ width: 64, height: 64 }} />
           </div>
           <div style={{ fontSize: 18, fontWeight: 600, color: token.colorText }}>
             发票管理助手
           </div>
           <div style={{ marginTop: 4, fontSize: 13, color: token.colorTextSecondary }}>
             版本 {version}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, color: token.colorTextTertiary }}>
+            作者: Wangshino
           </div>
         </div>
 

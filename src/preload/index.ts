@@ -16,7 +16,8 @@ import type {
   ParsePreview,
   ImportSummary,
   EmailSyncResult,
-  SyncLog
+  SyncLog,
+  SentEmail
 } from '../shared/types'
 
 const api = {
@@ -139,8 +140,11 @@ const api = {
     remove: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('reimbursements:remove', id),
 
-    sendEmail: (id: number, emailTo: string): Promise<IpcResult<void>> =>
-      ipcRenderer.invoke('reimbursements:sendEmail', id, emailTo),
+    sendEmail: (id: number, emailTo: string, options?: { customSubject?: string; customBody?: string }): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('reimbursements:sendEmail', id, emailTo, options),
+
+    previewEmail: (id: number, options?: { customSubject?: string; customBody?: string }): Promise<IpcResult<{ subject: string; html: string }>> =>
+      ipcRenderer.invoke('reimbursements:previewEmail', id, options),
 
     countByStatus: (): Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>> =>
       ipcRenderer.invoke('reimbursements:countByStatus')
@@ -150,6 +154,21 @@ const api = {
   matching: {
     findBestCombinations: (targetAmount: number): Promise<IpcResult<MatchingResult[]>> =>
       ipcRenderer.invoke('matching:findBestCombinations', targetAmount)
+  },
+
+  // ============ Sent Emails ============
+  sentEmails: {
+    getAll: (): Promise<IpcResult<SentEmail[]>> =>
+      ipcRenderer.invoke('sentEmails:getAll'),
+
+    findByReimbursement: (reimbId: number): Promise<IpcResult<SentEmail[]>> =>
+      ipcRenderer.invoke('sentEmails:findByReimbursement', reimbId),
+
+    remove: (id: number): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('sentEmails:remove', id),
+
+    clearAll: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('sentEmails:clearAll')
   },
 
   // ============ Settings ============

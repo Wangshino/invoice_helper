@@ -250,6 +250,7 @@ export interface UpdateReimbursementParams {
   date?: string
   status?: ReimbursementStatus
   emailTo?: string
+  emailSentAt?: string
   invoiceIds?: number[]
 }
 
@@ -348,6 +349,58 @@ export interface ParsedInvoice {
 }
 
 // ============================================================
+// 邮件模板
+// ============================================================
+
+export interface EmailTemplateData {
+  subjectTemplate: string
+  bodyTemplate: string
+}
+
+export const DEFAULT_EMAIL_TEMPLATE: EmailTemplateData = {
+  subjectTemplate: '报销单: {{title}} ({{invoiceCount}} 张发票)',
+  bodyTemplate: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 680px; margin: 0 auto;">
+  <h2 style="color: #1890ff; border-bottom: 2px solid #1890ff; padding-bottom: 8px;">
+    报销单: {{title}}
+  </h2>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+    <tr><td style="padding:8px;font-weight:bold;width:120px;">报销事由</td><td style="padding:8px;">{{reason}}</td></tr>
+    <tr><td style="padding:8px;font-weight:bold;">报销日期</td><td style="padding:8px;">{{date}}</td></tr>
+    <tr><td style="padding:8px;font-weight:bold;">目标金额</td><td style="padding:8px;">{{targetAmount}}</td></tr>
+    <tr><td style="padding:8px;font-weight:bold;">实际金额</td><td style="padding:8px;color:#52c41a;font-weight:bold;">{{actualAmount}}</td></tr>
+    <tr><td style="padding:8px;font-weight:bold;">发票数量</td><td style="padding:8px;">{{invoiceCount}} 张</td></tr>
+  </table>
+  <h3 style="color:#333;">发票明细</h3>
+  {{invoiceTable}}
+  <p style="color:#999;margin-top:24px;font-size:12px;">此邮件由发票管理助手自动发送</p>
+</div>`
+}
+
+// ============================================================
+// 发送历史
+// ============================================================
+
+export interface SentEmailRow {
+  id: number
+  reimbursement_id: number
+  email_to: string
+  subject: string
+  body_html: string
+  attachment_count: number
+  sent_at: string
+}
+
+export interface SentEmail {
+  id: number
+  reimbursementId: number
+  emailTo: string
+  subject: string
+  bodyHtml: string
+  attachmentCount: number
+  sentAt: string
+}
+
+// ============================================================
 // 字段映射工具
 // ============================================================
 
@@ -398,6 +451,14 @@ const REIMBURSEMENT_FIELD_MAP: Record<string, string> = {
   updated_at: 'updatedAt'
 }
 
+const SENT_EMAIL_FIELD_MAP: Record<string, string> = {
+  reimbursement_id: 'reimbursementId',
+  email_to: 'emailTo',
+  body_html: 'bodyHtml',
+  attachment_count: 'attachmentCount',
+  sent_at: 'sentAt'
+}
+
 /** 通用: 将 snake_case 对象转换为 camelCase */
 function toCamel<T>(row: Record<string, unknown>, fieldMap: Record<string, string>): T {
   const result: Record<string, unknown> = {}
@@ -439,5 +500,9 @@ export const FieldMappers = {
   syncLog: {
     toCamel: (row: Record<string, unknown>) => toCamel<SyncLog>(row, SYNC_LOG_FIELD_MAP),
     toList: (rows: Record<string, unknown>[]) => mapRows<SyncLog>(rows, SYNC_LOG_FIELD_MAP)
+  },
+  sentEmail: {
+    toCamel: (row: Record<string, unknown>) => toCamel<SentEmail>(row, SENT_EMAIL_FIELD_MAP),
+    toList: (rows: Record<string, unknown>[]) => mapRows<SentEmail>(rows, SENT_EMAIL_FIELD_MAP)
   }
 }

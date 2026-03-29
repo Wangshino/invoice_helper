@@ -99,7 +99,8 @@ export function update(id: number, params: UpdateReimbursementParams): void {
     actualAmount: 'actual_amount',
     date: 'date',
     status: 'status',
-    emailTo: 'email_to'
+    emailTo: 'email_to',
+    emailSentAt: 'email_sent_at'
   }
 
   for (const [camelKey, snakeKey] of Object.entries(fieldMap)) {

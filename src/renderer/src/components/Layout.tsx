@@ -6,7 +6,8 @@ import {
   MailOutlined,
   SettingOutlined,
   FormOutlined,
-  UnorderedListOutlined
+  UnorderedListOutlined,
+  SnippetsOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 
@@ -17,6 +18,7 @@ const menuItems = [
   { key: '/invoices', icon: <FileTextOutlined />, label: '发票管理' },
   { key: '/email-import', icon: <MailOutlined />, label: '邮件导入' },
   { key: '/email-settings', icon: <SettingOutlined />, label: '邮箱配置' },
+  { key: '/email-template', icon: <SnippetsOutlined />, label: '邮件模板' },
   { type: 'divider' as const },
   { key: '/reimbursement/create', icon: <FormOutlined />, label: '创建报销单' },
   { key: '/reimbursement/list', icon: <UnorderedListOutlined />, label: '报销单列表' }

@@ -4,10 +4,12 @@ import * as emailAccountRepo from '../repositories/email-account-repository'
 import * as reimbursementRepo from '../repositories/reimbursement-repository'
 import * as settingsRepo from '../repositories/settings-repository'
 import * as syncLogRepo from '../repositories/sync-log-repository'
+import * as sentEmailRepo from '../repositories/sent-email-repository'
 import { findBestCombinations } from '../services/matching'
 import { storeInvoiceFile, deleteStoredFile, parseInvoiceFile, detectFileType } from '../services/invoice-parser'
 import { testImapConnection, listMailboxes } from '../services/email-imap'
 import { syncEmailAccount, getSyncLog, clearSyncLog, setDebugMode } from '../services/email-sync'
+import { sendReimbursementEmail, previewReimbursementEmail } from '../services/email-sender'
 import { FieldMappers } from '../../shared/types'
 import type {
   IpcResult,
@@ -28,7 +30,8 @@ import type {
   ParsePreview,
   ImportSummary,
   EmailSyncResult,
-  SyncLog
+  SyncLog,
+  SentEmail
 } from '../../shared/types'
 import { basename } from 'path'
 
@@ -398,8 +401,40 @@ export function registerIpcHandlers(): void {
     return ok(undefined)
   })
 
-  safeHandle<IpcResult<void>>('reimbursements:sendEmail', async () => {
-    // TODO: Phase 6 — 发送报销邮件
+  safeHandle<IpcResult<void>>('reimbursements:sendEmail', async (
+    id: unknown,
+    emailTo: unknown,
+    options?: { customSubject?: string; customBody?: string }
+  ) => {
+    const reimbId = Number(id)
+    const to = String(emailTo)
+    if (!to || !to.includes('@')) throw new Error('请输入有效的收件人邮箱')
+
+    const row = reimbursementRepo.findById(reimbId)
+    if (!row) throw new Error('报销单不存在')
+
+    const invoiceRows = reimbursementRepo.findInvoices(reimbId)
+
+    await sendReimbursementEmail({
+      reimbursementId: reimbId,
+      emailTo: to,
+      title: row.title,
+      reason: row.reason,
+      targetAmount: row.target_amount,
+      actualAmount: row.actual_amount,
+      date: row.date,
+      invoices: invoiceRows,
+      customSubject: options?.customSubject,
+      customBody: options?.customBody
+    })
+
+    // 更新报销单状态: 记录收件人和发送时间
+    reimbursementRepo.update(reimbId, {
+      status: 'sent',
+      emailTo: to,
+      emailSentAt: new Date().toISOString()
+    })
+
     return ok(undefined)
   })
 
@@ -438,6 +473,50 @@ export function registerIpcHandlers(): void {
     }))
 
     return ok(mapped as unknown as MatchingResult[])
+  })
+
+  // ============ Email Preview ============
+
+  safeHandle<IpcResult<{ subject: string; html: string }>>('reimbursements:previewEmail', (
+    id: unknown,
+    options?: { customSubject?: string; customBody?: string }
+  ) => {
+    const reimbId = Number(id)
+    const row = reimbursementRepo.findById(reimbId)
+    if (!row) throw new Error('报销单不存在')
+
+    const invoiceRows = reimbursementRepo.findInvoices(reimbId)
+
+    return ok(previewReimbursementEmail({
+      title: row.title,
+      reason: row.reason,
+      targetAmount: row.target_amount,
+      actualAmount: row.actual_amount,
+      date: row.date,
+      invoices: invoiceRows,
+      customSubject: options?.customSubject,
+      customBody: options?.customBody
+    }))
+  })
+
+  // ============ Sent Emails ============
+
+  safeHandle<IpcResult<SentEmail[]>>('sentEmails:getAll', () => {
+    return ok(sentEmailRepo.findAll())
+  })
+
+  safeHandle<IpcResult<SentEmail[]>>('sentEmails:findByReimbursement', (reimbId: unknown) => {
+    return ok(sentEmailRepo.findByReimbursementId(Number(reimbId)))
+  })
+
+  safeHandle<IpcResult<void>>('sentEmails:remove', (id: unknown) => {
+    sentEmailRepo.remove(Number(id))
+    return ok(undefined)
+  })
+
+  safeHandle<IpcResult<void>>('sentEmails:clearAll', () => {
+    sentEmailRepo.clearAll()
+    return ok(undefined)
   })
 
   // ============ Settings ============

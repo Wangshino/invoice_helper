@@ -5,22 +5,31 @@ import {
   Space,
   Table,
   Tag,
+  Tabs,
   Typography,
   Popconfirm,
   Modal,
   Descriptions,
-  Select
+  Select,
+  Input,
+  Divider,
+  Card
 } from 'antd'
 import {
   PlusOutlined,
   DeleteOutlined,
   EyeOutlined,
-  EditOutlined
+  EditOutlined,
+  SendOutlined,
+  UndoOutlined,
+  HistoryOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import type { ColumnsType } from 'antd/es/table'
-import type { Reimbursement, ReimbursementStatus } from '../../../shared/types'
+import type { Reimbursement, ReimbursementStatus, SentEmail } from '../../../shared/types'
+import { DEFAULT_EMAIL_TEMPLATE } from '../../../shared/types'
+import type { EmailTemplateData } from '../../../shared/types'
 
 const { Title, Text } = Typography
 
@@ -32,7 +41,24 @@ export default function ReimbursementList(): React.ReactElement {
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailData, setDetailData] = useState<Reimbursement | null>(null)
   const [statusFilter, setStatusFilter] = useState<ReimbursementStatus | 'all' | undefined>()
+  const [activeTab, setActiveTab] = useState('list')
 
+  // Send modal state
+  const [sendModalOpen, setSendModalOpen] = useState(false)
+  const [sendTarget, setSendTarget] = useState<Reimbursement | null>(null)
+  const [sendEmailTo, setSendEmailTo] = useState('')
+  const [sendSubject, setSendSubject] = useState('')
+  const [sendBody, setSendBody] = useState('')
+  const [sendPreviewHtml, setSendPreviewHtml] = useState('')
+  const [sending, setSending] = useState(false)
+  const [defaultTemplate, setDefaultTemplate] = useState<EmailTemplateData>(DEFAULT_EMAIL_TEMPLATE)
+
+  // Sent email history
+  const [sentEmails, setSentEmails] = useState<SentEmail[]>([])
+  const [sentEmailDetail, setSentEmailDetail] = useState<SentEmail | null>(null)
+  const [sentDetailOpen, setSentDetailOpen] = useState(false)
+
+  // Load reimbursements
   const loadList = useCallback(async () => {
     setLoading(true)
     const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {}
@@ -45,9 +71,23 @@ export default function ReimbursementList(): React.ReactElement {
     setLoading(false)
   }, [statusFilter, message])
 
+  // Load sent emails
+  const loadSentEmails = useCallback(async () => {
+    const result = await window.api.sentEmails.getAll()
+    if (result.success && result.data) {
+      setSentEmails(result.data)
+    }
+  }, [])
+
   useEffect(() => {
     loadList()
   }, [loadList])
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadSentEmails()
+    }
+  }, [activeTab, loadSentEmails])
 
   const handleDelete = async (id: number): Promise<void> => {
     const result = await window.api.reimbursements.remove(id)
@@ -79,12 +119,112 @@ export default function ReimbursementList(): React.ReactElement {
     }
   }
 
+  // ===================== Send Modal =====================
+
+  const loadTemplate = useCallback(async () => {
+    const result = await window.api.settings.get('reimbursement_email_template')
+    if (result.success && result.data) {
+      try {
+        return JSON.parse(result.data) as EmailTemplateData
+      } catch {
+        return DEFAULT_EMAIL_TEMPLATE
+      }
+    }
+    return DEFAULT_EMAIL_TEMPLATE
+  }, [])
+
+  const handleOpenSendModal = async (record: Reimbursement): Promise<void> => {
+    setSendTarget(record)
+    setSendEmailTo(record.emailTo || '')
+    setSending(false)
+
+    // Load template
+    const tmpl = await loadTemplate()
+    setDefaultTemplate(tmpl)
+    setSendSubject(tmpl.subjectTemplate)
+    setSendBody(tmpl.bodyTemplate)
+
+    // Load preview
+    const previewResult = await window.api.reimbursements.previewEmail(record.id, {
+      customSubject: tmpl.subjectTemplate,
+      customBody: tmpl.bodyTemplate
+    })
+    if (previewResult.success && previewResult.data) {
+      setSendPreviewHtml(previewResult.data.html)
+    }
+
+    setSendModalOpen(true)
+  }
+
+  const handleUpdatePreview = async (subject: string, body: string): Promise<void> => {
+    if (!sendTarget) return
+    const previewResult = await window.api.reimbursements.previewEmail(sendTarget.id, {
+      customSubject: subject,
+      customBody: body
+    })
+    if (previewResult.success && previewResult.data) {
+      setSendPreviewHtml(previewResult.data.html)
+    }
+  }
+
+  const handleResetTemplate = (): void => {
+    setSendSubject(defaultTemplate.subjectTemplate)
+    setSendBody(defaultTemplate.bodyTemplate)
+    handleUpdatePreview(defaultTemplate.subjectTemplate, defaultTemplate.bodyTemplate)
+  }
+
+  const handleSendEmail = async (): Promise<void> => {
+    if (!sendTarget || !sendEmailTo.trim()) {
+      message.warning('请输入收件人邮箱')
+      return
+    }
+    setSending(true)
+    try {
+      const result = await window.api.reimbursements.sendEmail(
+        sendTarget.id,
+        sendEmailTo.trim(),
+        { customSubject: sendSubject, customBody: sendBody }
+      )
+      if (result.success) {
+        message.success('报销单已发送')
+        setSendModalOpen(false)
+        loadList()
+      } else {
+        message.error('发送失败: ' + (result.error || '未知错误'))
+      }
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // ===================== Sent Email History =====================
+
+  const handleDeleteSentEmail = async (id: number): Promise<void> => {
+    const result = await window.api.sentEmails.remove(id)
+    if (result.success) {
+      message.success('已删除')
+      loadSentEmails()
+    }
+  }
+
+  const handleClearHistory = async (): Promise<void> => {
+    const result = await window.api.sentEmails.clearAll()
+    if (result.success) {
+      message.success('已清空发送历史')
+      loadSentEmails()
+    }
+  }
+
+  // ===================== Status Map =====================
+
   const statusMap: Record<string, { color: string; text: string }> = {
     draft: { color: 'default', text: '草稿' },
     sent: { color: 'blue', text: '已发送' },
     approved: { color: 'green', text: '已批准' },
     rejected: { color: 'red', text: '已驳回' }
   }
+
+  // ===================== Columns =====================
 
   const columns: ColumnsType<Reimbursement> = [
     { title: '标题', dataIndex: 'title', key: 'title', width: 200, ellipsis: true },
@@ -123,6 +263,11 @@ export default function ReimbursementList(): React.ReactElement {
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(record.id)}>
             详情
           </Button>
+          {(record.status === 'draft' || record.status === 'sent') && (
+            <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handleOpenSendModal(record)}>
+              发送
+            </Button>
+          )}
           {record.status === 'draft' && (
             <>
               <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate('/reimbursement/create')}>
@@ -149,36 +294,106 @@ export default function ReimbursementList(): React.ReactElement {
     }
   ]
 
+  const sentEmailColumns: ColumnsType<SentEmail> = [
+    { title: '收件人', dataIndex: 'emailTo', width: 200 },
+    { title: '主题', dataIndex: 'subject', ellipsis: true },
+    {
+      title: '附件数',
+      dataIndex: 'attachmentCount',
+      width: 80,
+      render: (v: number) => `${v} 个`
+    },
+    {
+      title: '发送时间',
+      dataIndex: 'sentAt',
+      width: 180,
+      render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm:ss')
+    },
+    {
+      title: '操作',
+      width: 140,
+      render: (_: unknown, record: SentEmail) => (
+        <Space size="small">
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => {
+            setSentEmailDetail(record)
+            setSentDetailOpen(true)
+          }}>
+            查看
+          </Button>
+          <Popconfirm title="确认删除此记录？" onConfirm={() => handleDeleteSentEmail(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      )
+    }
+  ]
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>报销单列表</Title>
-        <Space>
-          <Select
-            style={{ width: 120 }}
-            placeholder="状态筛选"
-            allowClear
-            value={statusFilter}
-            onChange={setStatusFilter}
-          >
-            <Select.Option value="all">全部</Select.Option>
-            <Select.Option value="draft">草稿</Select.Option>
-            <Select.Option value="sent">已发送</Select.Option>
-            <Select.Option value="approved">已批准</Select.Option>
-            <Select.Option value="rejected">已驳回</Select.Option>
-          </Select>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/reimbursement/create')}>
-            新建报销单
-          </Button>
-        </Space>
-      </div>
-      <Table
-        columns={columns}
-        dataSource={reimbursements}
-        rowKey="id"
-        loading={loading}
-        pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
-        locale={{ emptyText: '暂无报销单，点击「新建报销单」开始' }}
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={[
+          {
+            key: 'list',
+            label: '报销单列表',
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Title level={3} style={{ margin: 0 }}>报销单列表</Title>
+                  <Space>
+                    <Select
+                      style={{ width: 120 }}
+                      placeholder="状态筛选"
+                      allowClear
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                    >
+                      <Select.Option value="all">全部</Select.Option>
+                      <Select.Option value="draft">草稿</Select.Option>
+                      <Select.Option value="sent">已发送</Select.Option>
+                      <Select.Option value="approved">已批准</Select.Option>
+                      <Select.Option value="rejected">已驳回</Select.Option>
+                    </Select>
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/reimbursement/create')}>
+                      新建报销单
+                    </Button>
+                  </Space>
+                </div>
+                <Table
+                  columns={columns}
+                  dataSource={reimbursements}
+                  rowKey="id"
+                  loading={loading}
+                  pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+                  locale={{ emptyText: '暂无报销单，点击「新建报销单」开始' }}
+                />
+              </>
+            )
+          },
+          {
+            key: 'history',
+            label: '发送历史',
+            icon: <HistoryOutlined />,
+            children: (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Title level={3} style={{ margin: 0 }}>发送历史</Title>
+                  <Popconfirm title="确认清空所有发送记录？" onConfirm={handleClearHistory}>
+                    <Button danger>清空历史</Button>
+                  </Popconfirm>
+                </div>
+                <Table
+                  columns={sentEmailColumns}
+                  dataSource={sentEmails}
+                  rowKey="id"
+                  pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+                  locale={{ emptyText: '暂无发送记录' }}
+                />
+              </>
+            )
+          }
+        ]}
       />
 
       {/* Detail Modal */}
@@ -224,6 +439,107 @@ export default function ReimbursementList(): React.ReactElement {
                 />
               </>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Send Email Modal */}
+      <Modal
+        title={`发送报销单 - ${sendTarget?.title ?? ''}`}
+        open={sendModalOpen}
+        onCancel={() => setSendModalOpen(false)}
+        width={900}
+        footer={
+          <Space>
+            <Button icon={<UndoOutlined />} onClick={handleResetTemplate}>
+              恢复模板
+            </Button>
+            <Button onClick={() => setSendModalOpen(false)}>取消</Button>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              loading={sending}
+              onClick={handleSendEmail}
+            >
+              发送
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>收件人</Text>
+          <Input
+            prefix={<SendOutlined />}
+            placeholder="请输入收件人邮箱地址"
+            value={sendEmailTo}
+            onChange={(e) => setSendEmailTo(e.target.value)}
+            style={{ marginTop: 4 }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>邮件主题</Text>
+          <Input
+            value={sendSubject}
+            onChange={(e) => setSendSubject(e.target.value)}
+            onBlur={() => handleUpdatePreview(sendSubject, sendBody)}
+            placeholder="邮件主题"
+            style={{ marginTop: 4 }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <Text strong>邮件正文 (HTML)</Text>
+          <Input.TextArea
+            rows={6}
+            value={sendBody}
+            onChange={(e) => setSendBody(e.target.value)}
+            onBlur={() => handleUpdatePreview(sendSubject, sendBody)}
+            placeholder="邮件正文 HTML"
+            style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 12 }}
+          />
+        </div>
+
+        <Divider style={{ margin: '12px 0' }}>预览</Divider>
+        <Card size="small" style={{ maxHeight: 300, overflow: 'auto' }}>
+          {sendPreviewHtml ? (
+            <div dangerouslySetInnerHTML={{ __html: sendPreviewHtml }} />
+          ) : (
+            <Text type="secondary">加载预览中...</Text>
+          )}
+        </Card>
+
+        {sendTarget?.emailSentAt && (
+          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+            上次发送: {dayjs(sendTarget.emailSentAt).format('YYYY-MM-DD HH:mm')} → {sendTarget.emailTo}
+          </Text>
+        )}
+      </Modal>
+
+      {/* Sent Email Detail Modal */}
+      <Modal
+        title={`发送详情 - ${sentEmailDetail?.subject ?? ''}`}
+        open={sentDetailOpen}
+        onCancel={() => setSentDetailOpen(false)}
+        width={700}
+        footer={null}
+      >
+        {sentEmailDetail && (
+          <div>
+            <Descriptions column={2} size="small" bordered>
+              <Descriptions.Item label="收件人">{sentEmailDetail.emailTo}</Descriptions.Item>
+              <Descriptions.Item label="发送时间">
+                {dayjs(sentEmailDetail.sentAt).format('YYYY-MM-DD HH:mm:ss')}
+              </Descriptions.Item>
+              <Descriptions.Item label="主题" span={2}>{sentEmailDetail.subject}</Descriptions.Item>
+              <Descriptions.Item label="附件数">{sentEmailDetail.attachmentCount} 个</Descriptions.Item>
+            </Descriptions>
+
+            <Divider>邮件正文</Divider>
+            <div
+              style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #e8e8e8', padding: 12, borderRadius: 4 }}
+              dangerouslySetInnerHTML={{ __html: sentEmailDetail.bodyHtml }}
+            />
           </div>
         )}
       </Modal>

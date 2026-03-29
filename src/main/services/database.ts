@@ -114,6 +114,21 @@ MIGRATIONS.set(3, `
   CREATE INDEX IF NOT EXISTS idx_sync_logs_date ON sync_logs(synced_at);
 `)
 
+MIGRATIONS.set(4, `
+  CREATE TABLE IF NOT EXISTS sent_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reimbursement_id INTEGER NOT NULL,
+    email_to TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body_html TEXT NOT NULL,
+    attachment_count INTEGER NOT NULL DEFAULT 0,
+    sent_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (reimbursement_id) REFERENCES reimbursements(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_sent_emails_reimb ON sent_emails(reimbursement_id);
+  CREATE INDEX IF NOT EXISTS idx_sent_emails_date ON sent_emails(sent_at);
+`)
+
 // ============================================================
 // Initialization
 // ============================================================

@@ -16,7 +16,8 @@ import type {
   ParsePreview,
   ImportSummary,
   EmailSyncResult,
-  SyncLog
+  SyncLog,
+  SentEmail
 } from '../shared/types'
 
 interface IpcAPI {
@@ -52,7 +53,8 @@ interface IpcAPI {
     create: (params: CreateReimbursementParams) => Promise<IpcResult<{ id: number }>>
     update: (id: number, params: UpdateReimbursementParams) => Promise<IpcResult<void>>
     remove: (id: number) => Promise<IpcResult<void>>
-    sendEmail: (id: number, emailTo: string) => Promise<IpcResult<void>>
+    sendEmail: (id: number, emailTo: string, options?: { customSubject?: string; customBody?: string }) => Promise<IpcResult<void>>
+    previewEmail: (id: number, options?: { customSubject?: string; customBody?: string }) => Promise<IpcResult<{ subject: string; html: string }>>
     countByStatus: () => Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>>
   }
   matching: {
@@ -74,6 +76,12 @@ interface IpcAPI {
     remove: (id: number) => Promise<IpcResult<void>>
     clearAll: () => Promise<IpcResult<void>>
     clearByAccount: (accountId: number) => Promise<IpcResult<void>>
+  }
+  sentEmails: {
+    getAll: () => Promise<IpcResult<SentEmail[]>>
+    findByReimbursement: (reimbId: number) => Promise<IpcResult<SentEmail[]>>
+    remove: (id: number) => Promise<IpcResult<void>>
+    clearAll: () => Promise<IpcResult<void>>
   }
 }
 

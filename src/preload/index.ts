@@ -187,6 +187,39 @@ const api = {
 
     getAll: (): Promise<IpcResult<Record<string, string>>> =>
       ipcRenderer.invoke('settings:getAll')
+  },
+
+  // ============ App & Updater ============
+  app: {
+    getVersion: (): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('app:getVersion'),
+
+    openExternal: (url: string): void => {
+      ipcRenderer.send('app:openExternal', url)
+    }
+  },
+
+  updater: {
+    check: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('updater:check'),
+
+    download: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('updater:download'),
+
+    install: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('updater:install'),
+
+    onStatus: (callback: (status: string, info?: string) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, status: string, info?: string): void => callback(status, info)
+      ipcRenderer.on('updater:status', handler)
+      return () => ipcRenderer.removeListener('updater:status', handler)
+    },
+
+    onProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: { percent: number; transferred: number; total: number }): void => callback(progress)
+      ipcRenderer.on('updater:progress', handler)
+      return () => ipcRenderer.removeListener('updater:progress', handler)
+    }
   }
 }
 

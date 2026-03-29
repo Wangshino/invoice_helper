@@ -85,6 +85,17 @@ interface IpcAPI {
     remove: (id: number) => Promise<IpcResult<void>>
     clearAll: () => Promise<IpcResult<void>>
   }
+  app: {
+    getVersion: () => Promise<IpcResult<string>>
+    openExternal: (url: string) => void
+  }
+  updater: {
+    check: () => Promise<IpcResult<void>>
+    download: () => Promise<IpcResult<void>>
+    install: () => Promise<IpcResult<void>>
+    onStatus: (callback: (status: string, info?: string) => void) => () => void
+    onProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => () => void
+  }
 }
 
 declare global {

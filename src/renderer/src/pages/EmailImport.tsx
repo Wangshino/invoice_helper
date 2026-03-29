@@ -344,7 +344,7 @@ export default function EmailImport(): React.ReactElement {
                             title="成功导入"
                             value={syncResult.imported.length}
                             prefix={<CheckCircleOutlined />}
-                            valueStyle={{ color: '#52c41a' }}
+                            styles={{ content: { color: '#52c41a' } }}
                             suffix="张"
                           />
                         </Card>
@@ -355,7 +355,7 @@ export default function EmailImport(): React.ReactElement {
                             title="跳过"
                             value={syncResult.skipped.length}
                             prefix={<MinusCircleOutlined />}
-                            valueStyle={{ color: '#faad14' }}
+                            styles={{ content: { color: '#faad14' } }}
                             suffix="张"
                           />
                         </Card>
@@ -366,7 +366,7 @@ export default function EmailImport(): React.ReactElement {
                             title="失败"
                             value={syncResult.failed.length}
                             prefix={<CloseCircleOutlined />}
-                            valueStyle={{ color: '#ff4d4f' }}
+                            styles={{ content: { color: '#ff4d4f' } }}
                             suffix="张"
                           />
                         </Card>
@@ -553,13 +553,13 @@ export default function EmailImport(): React.ReactElement {
                 <Statistic title="扫描" value={logDetail.scanned} suffix="封" />
               </Col>
               <Col span={6}>
-                <Statistic title="导入" value={logDetail.imported} suffix="张" valueStyle={{ color: '#52c41a' }} />
+                <Statistic title="导入" value={logDetail.imported} suffix="张" styles={{ content: { color: '#52c41a' } }} />
               </Col>
               <Col span={6}>
-                <Statistic title="跳过" value={logDetail.skipped} suffix="张" valueStyle={{ color: '#faad14' }} />
+                <Statistic title="跳过" value={logDetail.skipped} suffix="张" styles={{ content: { color: '#faad14' } }} />
               </Col>
               <Col span={6}>
-                <Statistic title="失败" value={logDetail.failed} suffix="张" valueStyle={{ color: '#ff4d4f' }} />
+                <Statistic title="失败" value={logDetail.failed} suffix="张" styles={{ content: { color: '#ff4d4f' } }} />
               </Col>
             </Row>
             {logDetail.fullLog && (

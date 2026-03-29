@@ -32,14 +32,18 @@ export function findBestCombinations(
   targetAmount: number,
   maxResults = 3
 ): MatchingResult[] {
-  // Filter out invoices larger than target and invalid entries
+  // Allow sums within ±100 yuan of target
+  const toleranceCents = 10000 // 100 yuan in cents
+
+  // Filter out invalid entries
   const valid = candidates.filter(
-    (c) => c.total_amount > 0 && c.total_amount <= targetAmount
+    (c) => c.total_amount > 0
   )
   if (valid.length === 0) return []
 
   // Convert to integer cents for DP precision
   const targetCents = Math.round(targetAmount * 100)
+  const maxSumCents = targetCents + toleranceCents
   const amounts = valid.map((c) => Math.round(c.total_amount * 100))
 
   // Limit candidates to avoid explosion (top 30 by amount should cover most cases)
@@ -57,20 +61,20 @@ export function findBestCombinations(
     const entries = Array.from(dp.entries()).sort((a, b) => b[0] - a[0])
     for (const [sum, indices] of entries) {
       const newSum = sum + currentAmount
-      if (newSum > targetCents) continue
+      if (newSum > maxSumCents) continue
       if (!dp.has(newSum)) {
         dp.set(newSum, [...indices, index])
       }
     }
   }
 
-  // Collect all valid sums, sorted closest to target
+  // Collect all valid sums within tolerance, sorted closest to target
   const allSums = Array.from(dp.entries())
-    .filter(([sum]) => sum > 0)
+    .filter(([sum]) => sum > 0 && Math.abs(sum - targetCents) <= toleranceCents)
     .sort((a, b) => {
       // Prefer exact match, then closest to target, then fewer invoices
-      const diffA = targetCents - a[0]
-      const diffB = targetCents - b[0]
+      const diffA = Math.abs(targetCents - a[0])
+      const diffB = Math.abs(targetCents - b[0])
       if (diffA === 0 && diffB !== 0) return -1
       if (diffB === 0 && diffA !== 0) return 1
       if (diffA !== diffB) return diffA - diffB

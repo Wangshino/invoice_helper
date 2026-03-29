@@ -19,7 +19,6 @@ import {
   PlusOutlined,
   DeleteOutlined,
   EyeOutlined,
-  EditOutlined,
   SendOutlined,
   UndoOutlined,
   HistoryOutlined,
@@ -215,10 +214,8 @@ export default function ReimbursementList(): React.ReactElement {
   // ===================== Status Map =====================
 
   const statusMap: Record<string, { color: string; text: string }> = {
-    draft: { color: 'default', text: '草稿' },
-    sent: { color: 'blue', text: '已发送' },
-    approved: { color: 'green', text: '已批准' },
-    rejected: { color: 'red', text: '已驳回' }
+    draft: { color: 'default', text: '未发送' },
+    sent: { color: 'blue', text: '已发送' }
   }
 
   // ===================== Columns =====================
@@ -293,11 +290,6 @@ export default function ReimbursementList(): React.ReactElement {
               发送
             </Button>
           )}
-          {record.status === 'draft' && (
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate('/reimbursement/create')}>
-              编辑
-            </Button>
-          )}
           <Popconfirm title="确认删除此报销单？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -362,10 +354,8 @@ export default function ReimbursementList(): React.ReactElement {
                       onChange={setStatusFilter}
                     >
                       <Select.Option value="all">全部</Select.Option>
-                      <Select.Option value="draft">草稿</Select.Option>
+                      <Select.Option value="draft">未发送</Select.Option>
                       <Select.Option value="sent">已发送</Select.Option>
-                      <Select.Option value="approved">已批准</Select.Option>
-                      <Select.Option value="rejected">已驳回</Select.Option>
                     </Select>
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/reimbursement/create')}>
                       新建报销单

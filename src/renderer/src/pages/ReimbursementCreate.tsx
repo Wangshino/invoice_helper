@@ -148,7 +148,7 @@ export default function ReimbursementCreate(): React.ReactElement {
   return (
     <div>
       <Title level={3}>创建报销单</Title>
-      <Card style={{ maxWidth: 900 }}>
+      <Card style={{ height: '100%' }}>
         <Form form={form} layout="vertical">
           <Form.Item label="报销单标题" name="title" rules={[{ required: true, message: '请输入标题' }]}>
             <Input placeholder="例如：3月差旅费报销" />

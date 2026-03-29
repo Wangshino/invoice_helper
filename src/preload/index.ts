@@ -50,6 +50,12 @@ const api = {
     openFile: (id: number): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('invoices:openFile', id),
 
+    readFileAsBase64: (id: number): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('invoices:readFileAsBase64', id),
+
+    extractOfdImages: (id: number): Promise<IpcResult<string[]>> =>
+      ipcRenderer.invoke('invoices:extractOfdImages', id),
+
     batchDelete: (ids: number[]): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('invoices:batchDelete', ids),
 

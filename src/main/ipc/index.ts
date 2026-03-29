@@ -34,6 +34,8 @@ import type {
   SentEmail
 } from '../../shared/types'
 import { basename } from 'path'
+import * as fs from 'fs'
+import AdmZip from 'adm-zip'
 
 // ============================================================
 // Helpers
@@ -335,6 +337,39 @@ export function registerIpcHandlers(): void {
     if (!row) throw new Error('发票不存在')
     await shell.openPath(row.file_path)
     return ok(undefined)
+  })
+
+  safeHandle<IpcResult<string>>('invoices:readFileAsBase64', (id: unknown) => {
+    const row = invoiceRepo.findById(Number(id))
+    if (!row) throw new Error('发票不存在')
+    const buffer = fs.readFileSync(row.file_path)
+    return ok(buffer.toString('base64'))
+  })
+
+  safeHandle<IpcResult<string[]>>('invoices:extractOfdImages', (id: unknown) => {
+    const row = invoiceRepo.findById(Number(id))
+    if (!row) throw new Error('发票不存在')
+    try {
+      const zip = new AdmZip(row.file_path)
+      const entries = zip.getEntries()
+      const images: string[] = []
+      for (const entry of entries) {
+        if (entry.isDirectory) continue
+        if (/\.(png|jpg|jpeg|bmp|gif|tif|tiff)$/i.test(entry.entryName)) {
+          const ext = entry.entryName.split('.').pop()?.toLowerCase() ?? 'png'
+          const mime =
+            ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+            ext === 'bmp' ? 'image/bmp' :
+            ext === 'gif' ? 'image/gif' :
+            ext === 'tif' || ext === 'tiff' ? 'image/tiff' :
+            'image/png'
+          images.push(`data:${mime};base64,${entry.getData().toString('base64')}`)
+        }
+      }
+      return ok(images)
+    } catch {
+      return ok([])
+    }
   })
 
   safeHandle<IpcResult<void>>('invoices:batchDelete', (ids: unknown) => {

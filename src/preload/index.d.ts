@@ -31,6 +31,8 @@ interface IpcAPI {
     parseFile: (filePath: string) => Promise<IpcResult<ParsePreview | null>>
     countByStatus: () => Promise<IpcResult<{ status: string; count: number; totalAmount: number }[]>>
     openFile: (id: number) => Promise<IpcResult<void>>
+    readFileAsBase64: (id: number) => Promise<IpcResult<string>>
+    extractOfdImages: (id: number) => Promise<IpcResult<string[]>>
     batchDelete: (ids: number[]) => Promise<IpcResult<void>>
     exportFiles: (ids: number[]) => Promise<IpcResult<string>>
   }

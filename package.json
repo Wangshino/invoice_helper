@@ -32,6 +32,7 @@
     "antd": "^6.3.4",
     "better-sqlite3": "^11.8.1",
     "dayjs": "^1.11.13",
+    "electron-updater": "^6.8.3",
     "fast-xml-parser": "^5.0.8",
     "imapflow": "^1.0.184",
     "invoice-ofd2json": "^1.0.6",

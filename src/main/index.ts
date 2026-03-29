@@ -44,10 +44,12 @@ function saveWindowBounds(bounds: WindowBounds): void {
 }
 
 // ============================================================
-// Application Menu
+// Application Menu (dev only)
 // ============================================================
 
-function buildAppMenu(): Menu {
+function buildAppMenu(): Menu | null {
+  if (!is.dev) return null
+
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: '文件',
@@ -151,6 +153,20 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Allow zoom shortcuts in production (no menu bar)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === '+' && (input.control || input.meta)) {
+      mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() + 0.5)
+      event.preventDefault()
+    } else if (input.key === '-' && (input.control || input.meta)) {
+      mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() - 0.5)
+      event.preventDefault()
+    } else if (input.key === '0' && (input.control || input.meta)) {
+      mainWindow.webContents.setZoomLevel(0)
+      event.preventDefault()
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -169,8 +185,9 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Set application menu
-  Menu.setApplicationMenu(buildAppMenu())
+  // Set application menu (dev only, production hides it)
+  const menu = buildAppMenu()
+  Menu.setApplicationMenu(menu)
 
   // Initialize database
   initDatabase()

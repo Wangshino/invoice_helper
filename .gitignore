@@ -5,3 +5,10 @@ out/
 *.log
 .env
 .env.*
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/

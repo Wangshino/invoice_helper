@@ -12,3 +12,6 @@ out/
 
 # Claude Code
 .claude/
+
+# Test data
+test/

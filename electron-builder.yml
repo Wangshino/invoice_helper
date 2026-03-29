@@ -46,4 +46,8 @@ linux:
   category: Office
 appImage:
   artifactName: ${name}-${version}.${ext}
+publish:
+  provider: github
+  owner: Wangshino
+  repo: invoice_helper
 npmRebuild: false

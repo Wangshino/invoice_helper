@@ -15,11 +15,14 @@ import type { Invoice } from '../../../shared/types'
 
 const { Text } = Typography
 
-// Configure pdfjs worker
-// In dev: Vite dev server serves from root
-// In production: public files are copied to out/renderer/ alongside index.html
-// Using a relative path from index.html works in both cases
-pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.min.mjs'
+// In production, Chromium blocks ES module workers from file:// URLs (CORS).
+// The preload script reads the worker file via Node.js and exposes a blob: URL.
+declare global {
+  interface Window {
+    pdfWorkerBlobUrl?: string
+  }
+}
+pdfjs.GlobalWorkerOptions.workerSrc = window.pdfWorkerBlobUrl || './pdf.worker.min.mjs'
 
 interface InvoicePreviewProps {
   invoice: Invoice

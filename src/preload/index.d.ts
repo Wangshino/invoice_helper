@@ -117,5 +117,6 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: IpcAPI
+    pdfWorkerBlobUrl?: string
   }
 }

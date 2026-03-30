@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
@@ -22,6 +24,19 @@ import type {
   PaginatedResult,
   OperationLog
 } from '../shared/types'
+
+// pdf.js v5 creates module workers via `new Worker(url, { type: 'module' })`.
+// Chromium blocks module workers from file:// URLs (CORS), so production builds fail.
+// Workaround: read the worker file via Node.js fs, create a blob: URL that bypasses CORS.
+let pdfWorkerBlobUrl = ''
+try {
+  const workerPath = join(__dirname, '../renderer/pdf.worker.min.mjs')
+  const workerContent = readFileSync(workerPath, 'utf-8')
+  const blob = new Blob([workerContent], { type: 'application/javascript' })
+  pdfWorkerBlobUrl = URL.createObjectURL(blob)
+} catch {
+  // Falls back to relative URL (works in dev, fails in production file://)
+}
 
 const api = {
   // ============ Invoices ============
@@ -263,6 +278,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('pdfWorkerBlobUrl', pdfWorkerBlobUrl)
   } catch (error) {
     console.error(error)
   }
@@ -271,4 +287,6 @@ if (process.contextIsolated) {
   window.electron = electronAPI
   // @ts-ignore
   window.api = api
+  // @ts-ignore
+  window.pdfWorkerBlobUrl = pdfWorkerBlobUrl
 }

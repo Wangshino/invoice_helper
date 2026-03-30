@@ -23,7 +23,8 @@ import {
   UndoOutlined,
   HistoryOutlined,
   FilePdfOutlined,
-  FileTextOutlined as FileXmlOutlined
+  FileTextOutlined as FileXmlOutlined,
+  EditOutlined
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
@@ -64,18 +65,28 @@ export default function ReimbursementList(): React.ReactElement {
   const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false)
   const [invoiceDetailData, setInvoiceDetailData] = useState<Invoice | null>(null)
 
+  const [reimbTotal, setReimbTotal] = useState(0)
+  const [reimbPagination, setReimbPagination] = useState({ page: 1, pageSize: 20 })
+
   // Load reimbursements
   const loadList = useCallback(async () => {
     setLoading(true)
     const filters = statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {}
-    const result = await window.api.reimbursements.getAll(filters)
+    const result = await window.api.reimbursements.getAll(filters, reimbPagination)
     if (result.success && result.data) {
-      setReimbursements(result.data)
+      const data = result.data
+      if ('items' in data) {
+        setReimbursements(data.items)
+        setReimbTotal(data.total)
+      } else {
+        setReimbursements(data)
+        setReimbTotal(data.length)
+      }
     } else {
       message.error('加载失败: ' + (result.error || '未知错误'))
     }
     setLoading(false)
-  }, [statusFilter, message])
+  }, [statusFilter, reimbPagination, message])
 
   // Load sent emails
   const loadSentEmails = useCallback(async () => {
@@ -285,6 +296,11 @@ export default function ReimbursementList(): React.ReactElement {
       align: 'center',
       render: (_: unknown, record: Reimbursement) => (
         <Space size={4} onClick={(e) => e.stopPropagation()}>
+          {record.status === 'draft' && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => navigate(`/reimbursement/create?editId=${record.id}`)}>
+              编辑
+            </Button>
+          )}
           {(record.status === 'draft' || record.status === 'sent') && (
             <Button type="link" size="small" icon={<SendOutlined />} onClick={() => handleOpenSendModal(record)}>
               发送
@@ -371,7 +387,14 @@ export default function ReimbursementList(): React.ReactElement {
                     onClick: () => handleViewDetail(record.id),
                     style: { cursor: 'pointer', transition: 'background 0.15s' }
                   })}
-                  pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+                  pagination={{
+                    current: reimbPagination.page,
+                    pageSize: reimbPagination.pageSize,
+                    total: reimbTotal,
+                    showTotal: (t) => `共 ${t} 条`,
+                    showSizeChanger: true,
+                    onChange: (page, pageSize) => setReimbPagination({ page, pageSize })
+                  }}
                   size="middle"
                   locale={{ emptyText: '暂无报销单，点击「新建报销单」开始' }}
                 />

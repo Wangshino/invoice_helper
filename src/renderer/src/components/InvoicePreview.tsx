@@ -7,7 +7,9 @@ import {
   LeftOutlined,
   RightOutlined,
   ZoomInOutlined,
-  FileImageOutlined
+  ZoomOutOutlined,
+  FileImageOutlined,
+  CompressOutlined,
 } from '@ant-design/icons'
 import type { Invoice } from '../../../shared/types'
 
@@ -28,6 +30,7 @@ function PdfPreview({ invoice }: { invoice: Invoice }): React.ReactElement {
   const [pdfBase64, setPdfBase64] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [scale, setScale] = useState(1.0)
 
   useEffect(() => {
     let cancelled = false
@@ -46,7 +49,6 @@ function PdfPreview({ invoice }: { invoice: Invoice }): React.ReactElement {
     return () => { cancelled = true }
   }, [invoice.id])
 
-  // Use data URI string — avoids ArrayBuffer transfer/detachment entirely
   const fileUrl = useMemo(
     () => (pdfBase64 ? `data:application/pdf;base64,${pdfBase64}` : undefined),
     [pdfBase64]
@@ -56,6 +58,10 @@ function PdfPreview({ invoice }: { invoice: Invoice }): React.ReactElement {
     setNumPages(numPages)
     setPageNumber(1)
   }, [])
+
+  const handleZoomIn = useCallback(() => setScale(s => Math.min(s + 0.25, 3.0)), [])
+  const handleZoomOut = useCallback(() => setScale(s => Math.max(s - 0.25, 0.5)), [])
+  const handleZoomReset = useCallback(() => setScale(1.0), [])
 
   if (loading) {
     return (
@@ -78,47 +84,72 @@ function PdfPreview({ invoice }: { invoice: Invoice }): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <Document
-        key={invoice.id}
-        file={fileUrl}
-        onLoadSuccess={onDocumentLoadSuccess}
-        loading={
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
-            <Spin />
-          </div>
-        }
-        error={
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <Text type="danger">PDF 渲染失败</Text>
-          </div>
-        }
-      >
-        <Page
-          pageNumber={pageNumber}
-          width={380}
-          renderTextLayer={false}
-          renderAnnotationLayer={false}
-        />
-      </Document>
-      {numPages > 1 && (
-        <Space style={{ marginTop: 8 }} size="middle">
-          <Button
-            size="small"
-            icon={<LeftOutlined />}
-            disabled={pageNumber <= 1}
-            onClick={() => setPageNumber((p) => p - 1)}
+      <div style={{
+        overflow: 'auto',
+        maxHeight: 400,
+        width: '100%',
+        border: '1px solid #f0f0f0',
+        borderRadius: 6,
+        background: '#e8e8e8',
+        display: 'flex',
+        justifyContent: 'center',
+      }}>
+        <Document
+          key={invoice.id}
+          file={fileUrl}
+          onLoadSuccess={onDocumentLoadSuccess}
+          loading={
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+              <Spin />
+            </div>
+          }
+          error={
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <Text type="danger">PDF 渲染失败</Text>
+            </div>
+          }
+        >
+          <Page
+            pageNumber={pageNumber}
+            width={Math.floor(500 * scale)}
+            renderTextLayer={false}
+            renderAnnotationLayer={false}
           />
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {pageNumber} / {numPages}
+        </Document>
+      </div>
+      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {/* Page navigation */}
+        {numPages > 1 && (
+          <Space size="small">
+            <Button
+              size="small"
+              icon={<LeftOutlined />}
+              disabled={pageNumber <= 1}
+              onClick={() => setPageNumber((p) => p - 1)}
+            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {pageNumber} / {numPages}
+            </Text>
+            <Button
+              size="small"
+              icon={<RightOutlined />}
+              disabled={pageNumber >= numPages}
+              onClick={() => setPageNumber((p) => p + 1)}
+            />
+          </Space>
+        )}
+        {/* Zoom controls */}
+        <Space size="small">
+          <Button size="small" icon={<ZoomOutOutlined />} onClick={handleZoomOut} disabled={scale <= 0.5} />
+          <Text type="secondary" style={{ fontSize: 12, minWidth: 36, textAlign: 'center' }}>
+            {Math.round(scale * 100)}%
           </Text>
-          <Button
-            size="small"
-            icon={<RightOutlined />}
-            disabled={pageNumber >= numPages}
-            onClick={() => setPageNumber((p) => p + 1)}
-          />
+          <Button size="small" icon={<ZoomInOutlined />} onClick={handleZoomIn} disabled={scale >= 3.0} />
+          {scale !== 1.0 && (
+            <Button size="small" icon={<CompressOutlined />} onClick={handleZoomReset} />
+          )}
         </Space>
-      )}
+      </div>
     </div>
   )
 }
@@ -201,7 +232,7 @@ function OfdThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
         borderRadius: 6,
         overflow: 'hidden',
         background: '#fff',
-        maxHeight: 500,
+        maxHeight: 400,
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center'
@@ -209,7 +240,7 @@ function OfdThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
         <img
           src={images[currentIdx]}
           alt={`OFD页面 ${currentIdx + 1}`}
-          style={{ maxWidth: '100%', maxHeight: 480, objectFit: 'contain' }}
+          style={{ maxWidth: '100%', maxHeight: 380, objectFit: 'contain' }}
         />
       </div>
       {images.length > 1 && (
@@ -243,7 +274,123 @@ function OfdThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
   )
 }
 
-// ========== XML Thumbnail ==========
+// ========== XML Preview ==========
+
+/** 简易 XML 格式化 + 语法高亮 */
+function formatXml(xml: string): string {
+  // 先去掉已有缩进重新格式化
+  const PADDING = '  '
+  let formatted = ''
+  let indent = 0
+
+  // 标准化：移除已有缩进
+  const normalized = xml.replace(/>\s+</g, '><').replace(/\n\s*/g, '')
+
+  const tokens = normalized.split(/(<[^>]+>)/g).filter(t => t.length > 0)
+
+  for (const token of tokens) {
+    if (token.startsWith('</')) {
+      indent = Math.max(0, indent - 1)
+      formatted += PADDING.repeat(indent) + token + '\n'
+    } else if (token.startsWith('<?')) {
+      formatted += token + '\n'
+    } else if (token.startsWith('<') && !token.endsWith('/>') && !token.startsWith('<!')) {
+      // Check if self-closing via attributes
+      if (token.endsWith('/>')) {
+        formatted += PADDING.repeat(indent) + token + '\n'
+      } else {
+        formatted += PADDING.repeat(indent) + token + '\n'
+        indent++
+      }
+    } else if (token.startsWith('<') && token.endsWith('/>')) {
+      formatted += PADDING.repeat(indent) + token + '\n'
+    } else if (!token.startsWith('<')) {
+      // Text content — append to previous line
+      if (token.trim()) {
+        formatted = formatted.trimEnd() + token.trim() + '\n'
+      }
+    } else {
+      formatted += PADDING.repeat(indent) + token + '\n'
+    }
+  }
+
+  return formatted
+}
+
+/** 对格式化后的 XML 做语法着色 */
+function highlightXml(xml: string): React.ReactNode[] {
+  const lines = xml.split('\n')
+  return lines.map((line, i) => {
+    // Match tag patterns
+    const parts: React.ReactNode[] = []
+    let remaining = line
+    let key = 0
+
+    while (remaining.length > 0) {
+      // Closing tag
+      const closeMatch = remaining.match(/^(<\/)([\w:.-]+)(>)/)
+      if (closeMatch) {
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{closeMatch[1]}</span>)
+        parts.push(<span key={key++} style={{ color: '#4ec9b0' }}>{closeMatch[2]}</span>)
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{closeMatch[3]}</span>)
+        remaining = remaining.slice(closeMatch[0].length)
+        continue
+      }
+
+      // Self-closing tag
+      const selfMatch = remaining.match(/^(<)([\w:.-]+)((?:\s+[^>]*?)?)(\/>)/)
+      if (selfMatch) {
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{selfMatch[1]}</span>)
+        parts.push(<span key={key++} style={{ color: '#4ec9b0' }}>{selfMatch[2]}</span>)
+        if (selfMatch[3]) {
+          parts.push(<span key={key++} style={{ color: '#9cdcfe' }}>{selfMatch[3]}</span>)
+        }
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{selfMatch[4]}</span>)
+        remaining = remaining.slice(selfMatch[0].length)
+        continue
+      }
+
+      // Opening tag with attributes
+      const openMatch = remaining.match(/^(<)([\w:.-]+)((?:\s+[^>]*?)?)(>)/)
+      if (openMatch) {
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{openMatch[1]}</span>)
+        parts.push(<span key={key++} style={{ color: '#4ec9b0' }}>{openMatch[2]}</span>)
+        if (openMatch[3]) {
+          // Highlight attributes
+          const attrStr = openMatch[3]
+          const attrParts = attrStr.split(/(\w+[\w:.-]*=["'][^"']*["'])/g)
+          for (const ap of attrParts) {
+            if (/^\w+[\w:.-]*=["']/.test(ap)) {
+              const eqIdx = ap.indexOf('=')
+              parts.push(<span key={key++} style={{ color: '#9cdcfe' }}>{ap.slice(0, eqIdx)}</span>)
+              parts.push(<span key={key++} style={{ color: '#569cd6' }}>{'='}</span>)
+              parts.push(<span key={key++} style={{ color: '#ce9178' }}>{ap.slice(eqIdx + 1)}</span>)
+            } else if (ap) {
+              parts.push(<span key={key++} style={{ color: '#9cdcfe' }}>{ap}</span>)
+            }
+          }
+        }
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{openMatch[4]}</span>)
+        remaining = remaining.slice(openMatch[0].length)
+        continue
+      }
+
+      // XML declaration
+      const declMatch = remaining.match(/^(<\?xml\s+[^?]*\?>)/)
+      if (declMatch) {
+        parts.push(<span key={key++} style={{ color: '#569cd6' }}>{declMatch[1]}</span>)
+        remaining = remaining.slice(declMatch[0].length)
+        continue
+      }
+
+      // Text content
+      parts.push(<span key={key++} style={{ color: '#d4d4d4' }}>{remaining}</span>)
+      break
+    }
+
+    return <div key={i}>{parts}</div>
+  })
+}
 
 function XmlThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
   const [xmlContent, setXmlContent] = useState('')
@@ -256,7 +403,11 @@ function XmlThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
       if (cancelled) return
       if (res.success && res.data) {
         try {
-          setXmlContent(atob(res.data))
+          // 正确解码 UTF-8：atob 返回 Latin1，需要通过 Uint8Array + TextDecoder 还原
+          const binary = atob(res.data)
+          const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+          const text = new TextDecoder('utf-8').decode(bytes)
+          setXmlContent(text)
         } catch {
           setXmlContent('')
         }
@@ -273,6 +424,9 @@ function XmlThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
       </div>
     )
   }
+
+  const formatted = xmlContent ? formatXml(xmlContent) : ''
+  const highlighted = formatted ? highlightXml(formatted) : []
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -299,24 +453,15 @@ function XmlThumbnail({ invoice }: { invoice: Invoice }): React.ReactElement {
         borderTop: 'none',
         borderRadius: '0 0 6px 6px',
         width: '100%',
-        background: '#fafafa',
-        maxHeight: 420,
+        background: '#1e1e1e',
+        maxHeight: 400,
         overflow: 'auto',
-        padding: 0
+        padding: 12,
+        fontFamily: "'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace",
+        fontSize: 11,
+        lineHeight: 1.5,
       }}>
-        <pre style={{
-          fontSize: 11,
-          lineHeight: 1.6,
-          margin: 0,
-          padding: 12,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          color: '#434343',
-          fontFamily: "'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace"
-        }}>
-          {xmlContent.slice(0, 3000)}
-          {xmlContent.length > 3000 ? '\n\n... (内容已截断)' : ''}
-        </pre>
+        {highlighted}
       </div>
       {/* Footer info */}
       <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 16 }}>

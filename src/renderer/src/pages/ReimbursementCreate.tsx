@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   App,
   Button,
@@ -14,37 +14,77 @@ import {
   Table,
   Tag,
   Collapse,
-  Result
+  Result,
+  Spin
 } from 'antd'
 import {
   DollarOutlined,
   ThunderboltOutlined,
   CheckCircleOutlined,
-  SaveOutlined
+  SaveOutlined,
+  EditOutlined
 } from '@ant-design/icons'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import dayjs from 'dayjs'
-import type { Invoice } from '../../../shared/types'
+import type { Invoice, MatchingResult, Reimbursement } from '../../../shared/types'
 
 const { Title, Text } = Typography
 const { TextArea } = Input
 
-interface MatchingResult {
-  totalAmount: number
-  invoices: Invoice[]
-  invoiceCount: number
-  difference: number
-  isExact: boolean
-}
-
 export default function ReimbursementCreate(): React.ReactElement {
   const { message } = App.useApp()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const editId = searchParams.get('editId')
+
+  const isEditMode = !!editId
+
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [matching, setMatching] = useState(false)
   const [matchResults, setMatchResults] = useState<MatchingResult[]>([])
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null)
+  const [loadingEdit, setLoadingEdit] = useState(isEditMode)
+
+  // Load existing reimbursement for edit mode
+  useEffect(() => {
+    if (!editId) return
+    const loadEditData = async () => {
+      setLoadingEdit(true)
+      try {
+        const result = await window.api.reimbursements.getById(Number(editId))
+        if (result.success && result.data) {
+          const reimb = result.data as Reimbursement
+          form.setFieldsValue({
+            title: reimb.title,
+            reason: reimb.reason,
+            target_amount: reimb.targetAmount,
+            date: dayjs(reimb.date)
+          })
+
+          // Construct match result from existing invoices
+          if (reimb.invoices && reimb.invoices.length > 0) {
+            const totalAmount = reimb.invoices.reduce((sum, inv) => sum + (inv.totalAmount ?? 0), 0)
+            const existingPlan: MatchingResult = {
+              totalAmount,
+              invoices: reimb.invoices,
+              invoiceCount: reimb.invoices.length,
+              difference: reimb.targetAmount - totalAmount,
+              isExact: Math.abs(reimb.targetAmount - totalAmount) < 0.01
+            }
+            setMatchResults([existingPlan])
+            setSelectedPlan(0)
+          }
+        } else {
+          message.error('加载报销单失败')
+          navigate('/reimbursement/list')
+        }
+      } finally {
+        setLoadingEdit(false)
+      }
+    }
+    loadEditData()
+  }, [editId, form, message, navigate])
 
   const handleMatch = useCallback(async () => {
     const targetAmount = form.getFieldValue('target_amount')
@@ -72,7 +112,7 @@ export default function ReimbursementCreate(): React.ReactElement {
     }
   }, [form, message])
 
-  const handleSave = useCallback(async (status: 'draft' | 'sent') => {
+  const handleSave = useCallback(async (status: 'draft' | 'sent', navigateAfter: boolean) => {
     setSaving(true)
     try {
       const values = await form.validateFields()
@@ -88,19 +128,33 @@ export default function ReimbursementCreate(): React.ReactElement {
         invoiceIds: selectedPlanData?.invoices.map((inv: Invoice) => inv.id)
       }
 
-      const result = await window.api.reimbursements.create(params)
-      if (result.success) {
-        message.success(status === 'draft' ? '报销单已保存为草稿' : '报销单已创建')
-        navigate('/reimbursement/list')
+      if (isEditMode && editId) {
+        const result = await window.api.reimbursements.update(Number(editId), params)
+        if (result.success) {
+          message.success('报销单已更新')
+          if (navigateAfter) {
+            navigate('/reimbursement/list')
+          }
+        } else {
+          message.error('更新失败: ' + (result.error || '未知错误'))
+        }
       } else {
-        message.error('创建失败: ' + (result.error || '未知错误'))
+        const result = await window.api.reimbursements.create(params)
+        if (result.success) {
+          message.success('报销单已保存为草稿')
+          if (navigateAfter) {
+            navigate('/reimbursement/list')
+          }
+        } else {
+          message.error('创建失败: ' + (result.error || '未知错误'))
+        }
       }
     } catch {
       // form validation error
     } finally {
       setSaving(false)
     }
-  }, [form, matchResults, selectedPlan, message, navigate])
+  }, [form, matchResults, selectedPlan, message, navigate, isEditMode, editId])
 
   const planColumns = [
     {
@@ -145,9 +199,23 @@ export default function ReimbursementCreate(): React.ReactElement {
     }
   ]
 
+  if (loadingEdit) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Spin size="large" />
+      </div>
+    )
+  }
+
   return (
     <div>
-      <Title level={3}>创建报销单</Title>
+      <Title level={3}>
+        {isEditMode ? (
+          <Space><EditOutlined />编辑报销单</Space>
+        ) : (
+          '创建报销单'
+        )}
+      </Title>
       <Card style={{ height: '100%' }}>
         <Form form={form} layout="vertical">
           <Form.Item label="报销单标题" name="title" rules={[{ required: true, message: '请输入标题' }]}>
@@ -249,10 +317,10 @@ export default function ReimbursementCreate(): React.ReactElement {
 
             <div style={{ marginTop: 16, textAlign: 'right' }}>
               <Space>
-                <Button onClick={() => navigate('/reimbursement')}>取消</Button>
+                <Button onClick={() => navigate('/reimbursement/list')}>取消</Button>
                 <Button
                   icon={<SaveOutlined />}
-                  onClick={() => handleSave('draft')}
+                  onClick={() => handleSave('draft', false)}
                   disabled={selectedPlan === null}
                 >
                   保存草稿
@@ -260,11 +328,11 @@ export default function ReimbursementCreate(): React.ReactElement {
                 <Button
                   type="primary"
                   icon={<CheckCircleOutlined />}
-                  onClick={() => handleSave('draft')}
+                  onClick={() => handleSave('draft', true)}
                   disabled={selectedPlan === null}
                   loading={saving}
                 >
-                  确认创建
+                  {isEditMode ? '确认更新' : '确认创建'}
                 </Button>
               </Space>
             </div>

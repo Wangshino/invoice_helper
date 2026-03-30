@@ -4,6 +4,10 @@ copyright: Copyright © 2026
 directories:
   buildResources: build
   output: dist
+publish:
+  provider: github
+  owner: Wangshino
+  repo: invoice_helper
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -36,7 +40,8 @@ mac:
     NSDocumentsFolderUsageDescription: 'Application requests access to the user''s Documents folder.'
     NSDownloadsFolderUsageDescription: 'Application requests access to the user''s Downloads folder.'
   notarize: false
-  artifactName: ${name}-${version}-mac.${ext}
+  target:
+    - dmg
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:

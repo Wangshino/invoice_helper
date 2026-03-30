@@ -11,6 +11,7 @@ import { testImapConnection, listMailboxes } from '../services/email-imap'
 import { syncEmailAccount, getSyncLog, clearSyncLog, setDebugMode } from '../services/email-sync'
 import { sendReimbursementEmail, previewReimbursementEmail } from '../services/email-sender'
 import { createBackup, restoreBackup } from '../services/backup'
+import { logOperation, getRecentLogs, clearAllLogs } from '../services/operation-log'
 import { FieldMappers } from '../../shared/types'
 import type {
   IpcResult,
@@ -35,7 +36,8 @@ import type {
   SyncLog,
   SentEmail,
   PaginationParams,
-  PaginatedResult
+  PaginatedResult,
+  OperationLog
 } from '../../shared/types'
 import { basename, join } from 'path'
 import * as fs from 'fs'
@@ -130,6 +132,7 @@ export function registerIpcHandlers(): void {
       deleteStoredFile(row.file_path)
     }
     invoiceRepo.remove(Number(id))
+    logOperation({ action: 'invoice_delete', targetType: 'invoice', targetId: Number(id), detail: { invoiceNumber: row?.invoice_number } })
     return ok(undefined)
   })
 
@@ -198,6 +201,13 @@ export function registerIpcHandlers(): void {
         failed.push({ fileName, error: e instanceof Error ? e.message : String(e) })
       }
     }
+    if (invoices.length > 0) {
+      logOperation({
+        action: 'invoice_import',
+        targetType: 'invoice',
+        detail: { count: invoices.length, fileNames: invoices.map(i => i.fileName).filter(Boolean) }
+      })
+    }
     return ok({ invoices, skipped, failed })
   })
 
@@ -218,6 +228,7 @@ export function registerIpcHandlers(): void {
 
   safeHandle<IpcResult<void>>('invoices:update', (id: unknown, params: UpdateInvoiceParams) => {
     invoiceRepo.update(Number(id), params)
+    logOperation({ action: 'invoice_edit', targetType: 'invoice', targetId: Number(id), detail: { changedFields: Object.keys(params) } })
     return ok(undefined)
   })
 
@@ -479,6 +490,7 @@ export function registerIpcHandlers(): void {
       if (row?.file_path) deleteStoredFile(row.file_path)
       invoiceRepo.remove(id)
     }
+    logOperation({ action: 'invoice_batch_delete', targetType: 'invoice', detail: { count: idList.length, ids: idList } })
     return ok(undefined)
   })
 
@@ -533,6 +545,7 @@ export function registerIpcHandlers(): void {
 
   safeHandle<IpcResult<{ id: number }>>('reimbursements:create', (params: CreateReimbursementParams) => {
     const id = reimbursementRepo.create(params)
+    logOperation({ action: 'reimbursement_create', targetType: 'reimbursement', targetId: id, detail: { title: params.title } })
     return ok({ id })
   })
 
@@ -579,6 +592,8 @@ export function registerIpcHandlers(): void {
       emailTo: to,
       emailSentAt: new Date().toISOString()
     })
+
+    logOperation({ action: 'reimbursement_send', targetType: 'reimbursement', targetId: reimbId, detail: { emailTo: to, title: row.title } })
 
     return ok(undefined)
   })
@@ -690,6 +705,7 @@ export function registerIpcHandlers(): void {
     })
     if (result.canceled || !result.filePath) return ok('')
     createBackup(result.filePath)
+    logOperation({ action: 'backup_create', targetType: 'system', detail: { filePath: result.filePath } })
     return ok(result.filePath)
   })
 
@@ -702,6 +718,7 @@ export function registerIpcHandlers(): void {
     })
     if (result.canceled || !result.filePaths.length) return ok(false)
     restoreBackup(result.filePaths[0])
+    logOperation({ action: 'backup_restore', targetType: 'system', detail: { filePath: result.filePaths[0] } })
     return ok(true)
   })
 
@@ -713,5 +730,24 @@ export function registerIpcHandlers(): void {
 
   ipcMain.on('app:openExternal', (_event, url: string) => {
     shell.openExternal(url)
+  })
+
+  // ============ Operation Logs ============
+
+  safeHandle<IpcResult<OperationLog[]>>('operation-logs:getRecent', (limit?: unknown) => {
+    const rows = getRecentLogs(limit ? Number(limit) : 100)
+    return ok(rows.map(r => ({
+      id: r.id,
+      action: r.action,
+      targetType: r.target_type,
+      targetId: r.target_id,
+      detail: r.detail,
+      createdAt: r.created_at
+    })))
+  })
+
+  safeHandle<IpcResult<void>>('operation-logs:clearAll', () => {
+    clearAllLogs()
+    return ok(undefined)
   })
 }

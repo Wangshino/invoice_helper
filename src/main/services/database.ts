@@ -171,6 +171,19 @@ MIGRATIONS.set(4, `
   CREATE INDEX IF NOT EXISTS idx_sent_emails_date ON sent_emails(sent_at);
 `)
 
+MIGRATIONS.set(8, `
+  CREATE TABLE IF NOT EXISTS operation_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id INTEGER,
+    detail TEXT,
+    created_at DATETIME NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_op_logs_action ON operation_logs(action);
+  CREATE INDEX IF NOT EXISTS idx_op_logs_date ON operation_logs(created_at);
+`)
+
 // ============================================================
 // Initialization
 // ============================================================

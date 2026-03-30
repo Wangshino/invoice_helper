@@ -26,7 +26,8 @@ import {
   GithubOutlined,
   RocketOutlined,
   SaveOutlined,
-  UndoOutlined
+  UndoOutlined,
+  HistoryOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 
@@ -44,7 +45,9 @@ const menuItems = [
   { key: '/email-template', icon: <SnippetsOutlined />, label: '邮件模板' },
   { type: 'divider' as const },
   { key: '/reimbursement/create', icon: <FormOutlined />, label: '创建报销单' },
-  { key: '/reimbursement/list', icon: <UnorderedListOutlined />, label: '报销单列表' }
+  { key: '/reimbursement/list', icon: <UnorderedListOutlined />, label: '报销单列表' },
+  { type: 'divider' as const },
+  { key: '/operation-logs', icon: <HistoryOutlined />, label: '操作日志' }
 ]
 
 interface LayoutProps {

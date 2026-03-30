@@ -18,7 +18,8 @@ import type {
   EmailSyncResult,
   SyncLog,
   SentEmail,
-  PaginatedResult
+  PaginatedResult,
+  OperationLog
 } from '../shared/types'
 
 interface IpcAPI {
@@ -98,6 +99,10 @@ interface IpcAPI {
   backup: {
     create: () => Promise<IpcResult<string>>
     restore: () => Promise<IpcResult<boolean>>
+  }
+  operationLogs: {
+    getRecent: (limit?: number) => Promise<IpcResult<OperationLog[]>>
+    clearAll: () => Promise<IpcResult<void>>
   }
   updater: {
     check: () => Promise<IpcResult<void>>

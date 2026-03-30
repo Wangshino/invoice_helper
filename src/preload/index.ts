@@ -19,7 +19,8 @@ import type {
   EmailSyncResult,
   SyncLog,
   SentEmail,
-  PaginatedResult
+  PaginatedResult,
+  OperationLog
 } from '../shared/types'
 
 const api = {
@@ -223,6 +224,15 @@ const api = {
 
     restore: (): Promise<IpcResult<boolean>> =>
       ipcRenderer.invoke('backup:restore')
+  },
+
+  // ============ Operation Logs ============
+  operationLogs: {
+    getRecent: (limit?: number): Promise<IpcResult<OperationLog[]>> =>
+      ipcRenderer.invoke('operation-logs:getRecent', limit),
+
+    clearAll: (): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('operation-logs:clearAll')
   },
 
   updater: {

@@ -9,6 +9,7 @@ import EmailSettings from './pages/EmailSettings'
 import EmailTemplateSettings from './pages/EmailTemplateSettings'
 import ReimbursementCreate from './pages/ReimbursementCreate'
 import ReimbursementList from './pages/ReimbursementList'
+import OperationLogs from './pages/OperationLogs'
 
 function App(): React.ReactElement {
   return (
@@ -24,6 +25,7 @@ function App(): React.ReactElement {
               <Route path="/email-template" element={<EmailTemplateSettings />} />
               <Route path="/reimbursement/create" element={<ReimbursementCreate />} />
               <Route path="/reimbursement/list" element={<ReimbursementList />} />
+              <Route path="/operation-logs" element={<OperationLogs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>

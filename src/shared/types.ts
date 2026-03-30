@@ -429,6 +429,30 @@ export interface SentEmail {
 }
 
 // ============================================================
+// 操作日志
+// ============================================================
+
+/** 操作日志 — 数据库行 (snake_case) */
+export interface OperationLogRow {
+  id: number
+  action: string
+  target_type: string | null
+  target_id: number | null
+  detail: string | null
+  created_at: string
+}
+
+/** 操作日志 — 渲染进程实体 (camelCase) */
+export interface OperationLog {
+  id: number
+  action: string
+  targetType: string | null
+  targetId: number | null
+  detail: string | null
+  createdAt: string
+}
+
+// ============================================================
 // 字段映射工具
 // ============================================================
 

@@ -10,56 +10,61 @@ export function findAll(filters: InvoiceFilters, pagination: PaginationParams): 
 export function findAll(filters?: InvoiceFilters, pagination?: PaginationParams) {
   const db = getDb()
   let whereSql = 'WHERE 1=1'
+  let joinFts = false
   const params: unknown[] = []
 
   if (filters?.status && filters.status !== 'all') {
-    whereSql += ' AND status = ?'
+    whereSql += ' AND invoices.status = ?'
     params.push(filters.status)
   }
   if (filters?.dateFrom) {
-    whereSql += ' AND invoice_date >= ?'
+    whereSql += ' AND invoices.invoice_date >= ?'
     params.push(filters.dateFrom)
   }
   if (filters?.dateTo) {
-    whereSql += ' AND invoice_date <= ?'
+    whereSql += ' AND invoices.invoice_date <= ?'
     params.push(filters.dateTo)
   }
   if (filters?.source) {
-    whereSql += ' AND source = ?'
+    whereSql += ' AND invoices.source = ?'
     params.push(filters.source)
   }
   if (filters?.keyword) {
-    whereSql += ' AND (invoice_number LIKE ? OR seller_name LIKE ? OR file_name LIKE ? OR buyer_name LIKE ?)'
-    const kw = `%${filters.keyword}%`
-    params.push(kw, kw, kw, kw)
+    joinFts = true
+    whereSql += ' AND invoices_fts MATCH ?'
+    params.push(`"${filters.keyword.replace(/"/g, '""')}"`)
   }
   if (filters?.category) {
-    whereSql += ' AND category = ?'
+    whereSql += ' AND invoices.category = ?'
     params.push(filters.category)
   }
   if (filters?.amountFrom != null) {
-    whereSql += ' AND total_amount >= ?'
+    whereSql += ' AND invoices.total_amount >= ?'
     params.push(filters.amountFrom)
   }
   if (filters?.amountTo != null) {
-    whereSql += ' AND total_amount <= ?'
+    whereSql += ' AND invoices.total_amount <= ?'
     params.push(filters.amountTo)
   }
   if (filters?.buyerName) {
-    whereSql += ' AND buyer_name LIKE ?'
+    whereSql += ' AND invoices.buyer_name LIKE ?'
     params.push(`%${filters.buyerName}%`)
   }
 
+  const fromSql = joinFts
+    ? 'FROM invoices INNER JOIN invoices_fts ON invoices.id = invoices_fts.rowid'
+    : 'FROM invoices'
+
   if (pagination) {
-    const countSql = `SELECT COUNT(*) as total FROM invoices ${whereSql}`
+    const countSql = `SELECT COUNT(*) as total ${fromSql} ${whereSql}`
     const { total } = db.prepare(countSql).get(...params) as { total: number }
     const offset = (pagination.page - 1) * pagination.pageSize
-    const dataSql = `SELECT * FROM invoices ${whereSql} ORDER BY invoice_date DESC, created_at DESC LIMIT ? OFFSET ?`
+    const dataSql = `SELECT invoices.* ${fromSql} ${whereSql} ORDER BY invoices.invoice_date DESC, invoices.created_at DESC LIMIT ? OFFSET ?`
     const items = db.prepare(dataSql).all(...params, pagination.pageSize, offset) as InvoiceRow[]
     return { items, total }
   }
 
-  return db.prepare(`SELECT * FROM invoices ${whereSql} ORDER BY invoice_date DESC, created_at DESC`).all(...params) as InvoiceRow[]
+  return db.prepare(`SELECT invoices.* ${fromSql} ${whereSql} ORDER BY invoices.invoice_date DESC, invoices.created_at DESC`).all(...params) as InvoiceRow[]
 }
 
 export function findById(id: number): InvoiceRow | undefined {

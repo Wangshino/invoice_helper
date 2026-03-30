@@ -99,6 +99,40 @@ MIGRATIONS.set(6, `
   ALTER TABLE invoices ADD COLUMN category TEXT;
 `)
 
+MIGRATIONS.set(7, `
+  CREATE VIRTUAL TABLE IF NOT EXISTS invoices_fts USING fts5(
+    invoice_number,
+    seller_name,
+    buyer_name,
+    invoice_type,
+    invoice_content,
+    file_name,
+    content=invoices,
+    content_rowid=id,
+    tokenize='trigram'
+  );
+
+  INSERT INTO invoices_fts(rowid, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name)
+    SELECT id, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name FROM invoices;
+
+  CREATE TRIGGER IF NOT EXISTS invoices_fts_insert AFTER INSERT ON invoices BEGIN
+    INSERT INTO invoices_fts(rowid, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name)
+    VALUES (new.id, new.invoice_number, new.seller_name, new.buyer_name, new.invoice_type, new.invoice_content, new.file_name);
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS invoices_fts_update AFTER UPDATE ON invoices BEGIN
+    INSERT INTO invoices_fts(invoices_fts, rowid, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name)
+    VALUES ('delete', old.id, old.invoice_number, old.seller_name, old.buyer_name, old.invoice_type, old.invoice_content, old.file_name);
+    INSERT INTO invoices_fts(rowid, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name)
+    VALUES (new.id, new.invoice_number, new.seller_name, new.buyer_name, new.invoice_type, new.invoice_content, new.file_name);
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS invoices_fts_delete AFTER DELETE ON invoices BEGIN
+    INSERT INTO invoices_fts(invoices_fts, rowid, invoice_number, seller_name, buyer_name, invoice_type, invoice_content, file_name)
+    VALUES ('delete', old.id, old.invoice_number, old.seller_name, old.buyer_name, old.invoice_type, old.invoice_content, old.file_name);
+  END;
+`)
+
 // 后续迁移在此添加:
 MIGRATIONS.set(2, `
   ALTER TABLE email_accounts ADD COLUMN mail_folder TEXT NOT NULL DEFAULT 'INBOX';

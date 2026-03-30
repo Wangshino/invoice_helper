@@ -30,6 +30,7 @@ import {
   HistoryOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
+import iconSvg from '../assets/icon.svg'
 
 const { Sider, Content } = AntLayout
 const { Text } = Typography
@@ -328,7 +329,7 @@ export default function Layout({ children }: LayoutProps): React.ReactElement {
               overflow: 'hidden'
             }}
           >
-            <img src="/icon.png" alt="icon" style={{ width: 64, height: 64 }} />
+            <img src={iconSvg} alt="icon" style={{ width: 64, height: 64 }} />
           </div>
           <div style={{ fontSize: 18, fontWeight: 600, color: token.colorText }}>
             发票管理助手

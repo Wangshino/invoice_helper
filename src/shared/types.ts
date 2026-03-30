@@ -373,6 +373,7 @@ export interface ParsedInvoice {
   amount?: number
   taxAmount?: number
   totalAmount?: number
+  invoiceContent?: string
 }
 
 // ============================================================

@@ -10,6 +10,7 @@ import { storeInvoiceFile, deleteStoredFile, parseInvoiceFile, detectFileType, b
 import { testImapConnection, listMailboxes } from '../services/email-imap'
 import { syncEmailAccount, getSyncLog, clearSyncLog, setDebugMode } from '../services/email-sync'
 import { sendReimbursementEmail, previewReimbursementEmail } from '../services/email-sender'
+import { createBackup, restoreBackup } from '../services/backup'
 import { FieldMappers } from '../../shared/types'
 import type {
   IpcResult,
@@ -676,6 +677,32 @@ export function registerIpcHandlers(): void {
 
   safeHandle<IpcResult<Record<string, string>>>('settings:getAll', () => {
     return ok(settingsRepo.getAll())
+  })
+
+  // ============ Backup & Restore ============
+
+  safeHandle<IpcResult<string>>('backup:create', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return err('No focused window')
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: `invoice-helper-backup-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.zip`,
+      filters: [{ name: 'ZIP', extensions: ['zip'] }]
+    })
+    if (result.canceled || !result.filePath) return ok('')
+    createBackup(result.filePath)
+    return ok(result.filePath)
+  })
+
+  safeHandle<IpcResult<boolean>>('backup:restore', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return err('No focused window')
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'ZIP', extensions: ['zip'] }]
+    })
+    if (result.canceled || !result.filePaths.length) return ok(false)
+    restoreBackup(result.filePaths[0])
+    return ok(true)
   })
 
   // ============ App Info ============

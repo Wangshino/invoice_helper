@@ -95,6 +95,10 @@ interface IpcAPI {
     getVersion: () => Promise<IpcResult<string>>
     openExternal: (url: string) => void
   }
+  backup: {
+    create: () => Promise<IpcResult<string>>
+    restore: () => Promise<IpcResult<boolean>>
+  }
   updater: {
     check: () => Promise<IpcResult<void>>
     download: () => Promise<IpcResult<void>>

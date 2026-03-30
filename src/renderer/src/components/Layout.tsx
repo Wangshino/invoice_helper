@@ -7,7 +7,8 @@ import {
   Button,
   Typography,
   Progress,
-  Divider
+  Divider,
+  App
 } from 'antd'
 import {
   DashboardOutlined,
@@ -23,7 +24,9 @@ import {
   CloudOutlined,
   BugOutlined,
   GithubOutlined,
-  RocketOutlined
+  RocketOutlined,
+  SaveOutlined,
+  UndoOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 
@@ -49,6 +52,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps): React.ReactElement {
+  const { message } = App.useApp()
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -61,6 +65,53 @@ export default function Layout({ children }: LayoutProps): React.ReactElement {
   const [updateInfo, setUpdateInfo] = useState('')
   const [downloadPercent, setDownloadPercent] = useState(0)
   const [checking, setChecking] = useState(false)
+  const [backupLoading, setBackupLoading] = useState<'backup' | 'restore' | null>(null)
+
+  const handleBackup = useCallback(async () => {
+    Modal.confirm({
+      title: '备份数据',
+      content: '将数据库和所有发票文件打包为 ZIP 备份文件，是否继续？',
+      okText: '开始备份',
+      cancelText: '取消',
+      onOk: async () => {
+        setBackupLoading('backup')
+        try {
+          const res = await window.api.backup.create()
+          if (res.success && res.data) {
+            message.success(`备份成功: ${res.data}`)
+          }
+        } catch (e) {
+          message.error('备份失败: ' + (e instanceof Error ? e.message : String(e)))
+        } finally {
+          setBackupLoading(null)
+        }
+      }
+    })
+  }, [])
+
+  const handleRestore = useCallback(() => {
+    Modal.confirm({
+      title: '恢复数据',
+      content: '从备份 ZIP 恢复将覆盖当前所有数据，此操作不可撤销。恢复后应用将重新加载，是否继续？',
+      okText: '开始恢复',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        setBackupLoading('restore')
+        try {
+          const res = await window.api.backup.restore()
+          if (res.success && res.data) {
+            message.success('数据恢复成功，应用将重新加载...')
+            setTimeout(() => window.location.reload(), 1500)
+          }
+        } catch (e) {
+          message.error('恢复失败: ' + (e instanceof Error ? e.message : String(e)))
+        } finally {
+          setBackupLoading(null)
+        }
+      }
+    })
+  }, [])
 
   // Load version
   useEffect(() => {
@@ -401,6 +452,28 @@ export default function Layout({ children }: LayoutProps): React.ReactElement {
             onClick={() => window.api.app.openExternal(REPO_URL)}
           >
             GitHub
+          </Button>
+        </div>
+
+        {/* Data backup & restore */}
+        <Divider style={{ margin: '16px 0 12px' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+          <Button
+            size="small"
+            icon={<SaveOutlined />}
+            loading={backupLoading === 'backup'}
+            onClick={handleBackup}
+          >
+            备份数据
+          </Button>
+          <Button
+            size="small"
+            danger
+            icon={<UndoOutlined />}
+            loading={backupLoading === 'restore'}
+            onClick={handleRestore}
+          >
+            恢复数据
           </Button>
         </div>
       </Modal>

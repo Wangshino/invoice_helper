@@ -16,6 +16,18 @@
 - **智能匹配算法** — 动态规划子集和算法，自动找到最优发票组合匹配目标金额
 - **报销单管理** — 创建报销单、关联发票、自定义邮件模板一键发送
 - **文件预览** — 应用内直接预览 PDF/OFD/XML 发票文件
+- **发票编辑** — 支持手动编辑发票解析字段（带慎重提醒）
+- **手动分类** — 为发票设置分类标签，支持分类筛选与批量分类
+- **标准化命名** — 发票附件自动按「发票号-内容-金额-日期」规则命名
+- **全文搜索** — 基于 SQLite FTS5 + trigram 中文分词的高效搜索
+- **服务端分页** — SQL 层分页查询，大数据量下保持流畅
+- **数据导出** — 发票台账 CSV 导出（支持当前筛选条件）
+- **报销单编辑** — 草稿状态报销单支持修改标题、事由、重新匹配发票
+- **Dashboard 增强** — 月度金额趋势折线图 + 分类金额分布饼图
+- **批量操作** — 批量分类、批量加入报销单、批量重命名
+- **数据备份恢复** — 一键备份/恢复数据库与发票文件（ZIP 格式）
+- **Zustand 状态管理** — 全局 Store 实现跨页面数据共享与缓存
+- **CSS Modules** — 样式体系化，设计 Token 一致性
 - **自动更新** — 支持应用内检查更新，一键下载安装新版本
 
 ## 截图预览
@@ -81,6 +93,7 @@ npm run typecheck    # TypeScript 类型检查
 | 构建 | electron-vite 4 (Vite 7) |
 | UI | Ant Design 6 |
 | 路由 | React Router 7 |
+| 状态管理 | Zustand 5 |
 | 数据库 | better-sqlite3 (SQLite, WAL 模式) |
 | 邮件读取 | imapflow |
 | 邮件发送 | nodemailer |
@@ -99,12 +112,13 @@ src/
 │   ├── repositories/   # 数据访问层 (SQLite)
 │   └── services/       # 业务服务
 │       ├── database.ts       # 数据库初始化与迁移
-│       ├── invoice-parser.ts # 发票文件解析
+│       ├── invoice-parser.ts # 发票文件解析 + 标准化命名
 │       ├── invoice-ocr.ts    # 百度 OCR 集成
 │       ├── email-imap.ts     # IMAP 邮件读取
 │       ├── email-sync.ts     # 邮件同步服务
 │       ├── email-sender.ts   # 邮件发送服务
 │       ├── matching.ts       # 智能匹配算法
+│       ├── backup.ts         # 数据备份与恢复
 │       └── updater.ts        # 自动更新服务
 ├── preload/            # 预加载脚本 (安全桥接)
 │   ├── index.ts        # API 暴露
@@ -112,15 +126,16 @@ src/
 ├── renderer/           # React 渲染进程
 │   └── src/
 │       ├── pages/      # 页面组件
-│       │   ├── Dashboard.tsx           # 首页概览
-│       │   ├── Invoices.tsx            # 发票管理
+│       │   ├── Dashboard.tsx           # 首页概览 (趋势图/分布图)
+│       │   ├── Invoices.tsx            # 发票管理 (分页/搜索/编辑/分类/导出)
 │       │   ├── EmailImport.tsx         # 邮件导入
 │       │   ├── EmailSettings.tsx       # 邮箱配置
 │       │   ├── EmailTemplateSettings.tsx  # 邮件模板
-│       │   ├── ReimbursementCreate.tsx    # 创建报销单
-│       │   └── ReimbursementList.tsx      # 报销单列表
+│       │   ├── ReimbursementCreate.tsx    # 创建/编辑报销单
+│       │   └── ReimbursementList.tsx      # 报销单列表 (分页)
+│       ├── stores/     # Zustand 全局状态管理
 │       └── components/ # 通用组件
-│           ├── Layout.tsx       # 应用布局 (侧边栏)
+│           ├── Layout.tsx       # 应用布局 (侧边栏 + 备份恢复)
 │           └── InvoicePreview.tsx  # 发票文件预览
 └── shared/             # 主进程与渲染进程共享类型
     └── types.ts

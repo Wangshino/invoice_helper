@@ -2,26 +2,10 @@
  * 发票解析管线 — 公共类型定义
  */
 
-import type { InvoiceFileType } from '../../../shared/types'
+import type { InvoiceFileType, ParsedInvoice } from '../../../shared/types'
 
-// ============================================================
-// 解析结果类型
-// ============================================================
-
-export interface ParsedInvoice {
-  invoiceNumber?: string
-  invoiceCode?: string
-  invoiceDate?: string
-  invoiceType?: string
-  sellerName?: string
-  sellerTaxId?: string
-  buyerName?: string
-  buyerTaxId?: string
-  amount?: number
-  taxAmount?: number
-  totalAmount?: number
-  invoiceContent?: string
-}
+// Re-export ParsedInvoice from shared (唯一真相源)
+export type { ParsedInvoice }
 
 export interface ParseResult {
   parsed: ParsedInvoice

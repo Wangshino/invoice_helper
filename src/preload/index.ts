@@ -216,6 +216,15 @@ const api = {
     }
   },
 
+  // ============ Backup & Restore ============
+  backup: {
+    create: (): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('backup:create'),
+
+    restore: (): Promise<IpcResult<boolean>> =>
+      ipcRenderer.invoke('backup:restore')
+  },
+
   updater: {
     check: (): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('updater:check'),

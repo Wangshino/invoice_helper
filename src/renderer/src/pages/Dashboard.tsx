@@ -41,6 +41,7 @@ import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import type { Invoice, UpdateInvoiceParams } from '../../../shared/types'
 import InvoicePreview from '../components/InvoicePreview'
+import { useInvoiceStore } from '../stores/invoice-store'
 
 const { Title, Text } = Typography
 
@@ -53,9 +54,12 @@ const fileTypeIcon: Record<string, React.ReactNode> = {
 export default function Dashboard(): React.ReactElement {
   const { message } = App.useApp()
   const navigate = useNavigate()
-  const [invoiceStats, setInvoiceStats] = useState<{ status: string; count: number; totalAmount: number }[]>([])
+  const {
+    invoices: storeInvoices, stats: invoiceStats, categories,
+    loadInvoices, loadStats, loadCategories, invalidate
+  } = useInvoiceStore()
+
   const [reimburseStats, setReimburseStats] = useState<{ status: string; count: number; totalAmount: number }[]>([])
-  const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
@@ -65,44 +69,24 @@ export default function Dashboard(): React.ReactElement {
   const [editForm] = Form.useForm()
   const [editLoading, setEditLoading] = useState(false)
 
-  // Category
-  const [categories, setCategories] = useState<string[]>([])
-
-  const loadCategories = useCallback(async () => {
-    const result = await window.api.invoices.getCategories()
-    if (result.success && result.data) {
-      setCategories(result.data)
-    }
-  }, [])
+  const recentInvoices = storeInvoices.slice(0, 10)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [invRes, reimbRes, recentRes] = await Promise.all([
-        window.api.invoices.countByStatus(),
-        window.api.reimbursements.countByStatus(),
-        window.api.invoices.getAll({}, { page: 1, pageSize: 10 })
-      ])
-      if (invRes.success && invRes.data) setInvoiceStats(invRes.data)
+      const reimbRes = await window.api.reimbursements.countByStatus()
       if (reimbRes.success && reimbRes.data) setReimburseStats(reimbRes.data)
-      if (recentRes.success && recentRes.data) {
-        const data = recentRes.data
-        setRecentInvoices('items' in data ? data.items : Array.isArray(data) ? data.slice(0, 10) : [])
-      }
+      await Promise.all([loadInvoices(), loadStats(), loadCategories()])
     } catch {
       message.error('加载首页数据失败')
     } finally {
       setLoading(false)
     }
-  }, [message])
+  }, [message, loadInvoices, loadStats, loadCategories])
 
   useEffect(() => {
     load()
   }, [load])
-
-  useEffect(() => {
-    loadCategories()
-  }, [loadCategories])
 
   const unreimbursed = invoiceStats.find((s) => s.status === 'unreimbursed')
   const reimbursed = invoiceStats.find((s) => s.status === 'reimbursed')
@@ -165,15 +149,10 @@ export default function Dashboard(): React.ReactElement {
       if (result.success) {
         message.success('发票信息已更新')
         setEditing(false)
-        const recentRes = await window.api.invoices.getAll({}, { page: 1, pageSize: 10 })
-        if (recentRes.success && recentRes.data) {
-          const data = recentRes.data
-          const items = 'items' in data ? data.items : data
-          setRecentInvoices(items)
-          const updated = items.find((inv) => inv.id === detailInvoice.id)
-          if (updated) setDetailInvoice(updated)
-        }
-        loadCategories()
+        invalidate()
+        // Refresh detail invoice from updated store data
+        const updated = storeInvoices.find((inv) => inv.id === detailInvoice.id)
+        if (updated) setDetailInvoice(updated)
       } else {
         message.error('更新失败: ' + (result.error || '未知错误'))
       }
@@ -182,7 +161,7 @@ export default function Dashboard(): React.ReactElement {
     } finally {
       setEditLoading(false)
     }
-  }, [detailInvoice, editForm, message, loadCategories])
+  }, [detailInvoice, editForm, message, invalidate, storeInvoices])
 
   const handleOpenFile = useCallback(async (id: number) => {
     const result = await window.api.invoices.openFile(id)

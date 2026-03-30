@@ -39,6 +39,8 @@ export default function ReimbursementCreate(): React.ReactElement {
 
   const isEditMode = !!editId
 
+  const invoiceIdsParam = searchParams.get('invoiceIds')
+
   const [form] = Form.useForm()
   const [saving, setSaving] = useState(false)
   const [matching, setMatching] = useState(false)
@@ -85,6 +87,46 @@ export default function ReimbursementCreate(): React.ReactElement {
     }
     loadEditData()
   }, [editId, form, message, navigate])
+
+  // Load preselected invoices from invoiceIds URL parameter
+  useEffect(() => {
+    if (!invoiceIdsParam || isEditMode) return
+    const loadPreselectedInvoices = async () => {
+      setLoadingEdit(true)
+      try {
+        const ids = invoiceIdsParam.split(',').map(Number)
+        // Load each invoice
+        const invoicePromises = ids.map(id => window.api.invoices.getById(id))
+        const results = await Promise.all(invoicePromises)
+        const invoices = results
+          .filter(r => r.success && r.data)
+          .map(r => r.data as Invoice)
+
+        if (invoices.length > 0) {
+          const totalAmount = invoices.reduce((sum, inv) => sum + (inv.totalAmount ?? 0), 0)
+          form.setFieldsValue({ target_amount: totalAmount })
+
+          const plan: MatchingResult = {
+            totalAmount,
+            invoices,
+            invoiceCount: invoices.length,
+            difference: 0, // will be recalculated
+            isExact: false
+          }
+          // recalculate difference after form value is set
+          const targetAmount = totalAmount
+          plan.difference = targetAmount - totalAmount
+          plan.isExact = Math.abs(plan.difference) < 0.01
+
+          setMatchResults([plan])
+          setSelectedPlan(0)
+        }
+      } finally {
+        setLoadingEdit(false)
+      }
+    }
+    loadPreselectedInvoices()
+  }, [invoiceIdsParam, isEditMode, form])
 
   const handleMatch = useCallback(async () => {
     const targetAmount = form.getFieldValue('target_amount')

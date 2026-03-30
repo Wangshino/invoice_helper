@@ -481,6 +481,11 @@ export function registerIpcHandlers(): void {
     return ok(undefined)
   })
 
+  safeHandle<IpcResult<void>>('invoices:batchUpdateCategory', (ids: unknown, category: unknown) => {
+    invoiceRepo.batchUpdateCategory(ids as number[], String(category))
+    return ok(undefined)
+  })
+
   safeHandle<IpcResult<string>>('invoices:exportFiles', async (ids: unknown) => {
     const idList = ids as number[]
     const win = BrowserWindow.getFocusedWindow()

@@ -201,3 +201,13 @@ export function updateFilePathAndName(id: number, filePath: string, fileName: st
     .prepare('UPDATE invoices SET file_path = ?, file_name = ? WHERE id = ?')
     .run(filePath, fileName, id)
 }
+
+/** 批量更新分类 */
+export function batchUpdateCategory(ids: number[], category: string): void {
+  const db = getDb()
+  const stmt = db.prepare('UPDATE invoices SET category = ? WHERE id = ?')
+  const run = db.transaction(() => {
+    for (const id of ids) stmt.run(category, id)
+  })
+  run()
+}

@@ -23,6 +23,7 @@ import {
 } from 'antd'
 import {
   PlusOutlined,
+  PlusCircleOutlined,
   DeleteOutlined,
   SearchOutlined,
   ExportOutlined,
@@ -34,8 +35,10 @@ import {
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import type { Invoice, InvoiceFilters, UpdateInvoiceParams } from '../../../shared/types'
+import { useNavigate } from 'react-router-dom'
+import type { Invoice, UpdateInvoiceParams } from '../../../shared/types'
 import InvoicePreview from '../components/InvoicePreview'
+import { useInvoiceStore } from '../stores/invoice-store'
 
 const { Text } = Typography
 
@@ -47,27 +50,24 @@ const fileTypeIcon: Record<string, React.ReactNode> = {
 
 export default function Invoices(): React.ReactElement {
   const { message: msgApi } = App.useApp()
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [loading, setLoading] = useState(false)
-  const [filters, setFilters] = useState<InvoiceFilters>({})
+  const navigate = useNavigate()
+  const {
+    invoices, total, filters, pagination, loading, categories, stats,
+    setFilters: storeSetFilters, setPagination: storeSetPagination,
+    loadInvoices, loadCategories, loadStats, invalidate
+  } = useInvoiceStore()
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
   const [importing, setImporting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 50 })
-  const [total, setTotal] = useState(0)
-
-  // Global stats (from countByStatus, not current page)
-  const [stats, setStats] = useState<{ status: string; count: number; totalAmount: number }[]>([])
 
   // Edit mode
   const [editing, setEditing] = useState(false)
   const [editForm] = Form.useForm()
   const [editLoading, setEditLoading] = useState(false)
 
-  // Category
-  const [categories, setCategories] = useState<string[]>([])
+  // Batch category
   const [batchCategoryValue, setBatchCategoryValue] = useState<string>('')
   const [batchCategoryOpen, setBatchCategoryOpen] = useState(false)
 
@@ -76,26 +76,24 @@ export default function Invoices(): React.ReactElement {
   const [editingCategoryValue, setEditingCategoryValue] = useState('')
   const categoryInputRef = useRef<any>(null)
 
-  // Load categories
-  const loadCategories = useCallback(async () => {
-    const result = await window.api.invoices.getCategories()
-    if (result.success && result.data) {
-      setCategories(result.data)
-    }
-  }, [])
+  // Initial data load
+  useEffect(() => {
+    loadInvoices()
+    loadStats()
+    loadCategories()
+  }, [loadInvoices, loadStats, loadCategories])
 
   // Actions
   const handleDelete = useCallback(async (id: number) => {
     const result = await window.api.invoices.remove(id)
     if (result.success) {
-      setInvoices((prev) => prev.filter((inv) => inv.id !== id))
+      invalidate()
       setSelectedRowKeys((prev) => prev.filter((k) => k !== id))
-      setTotal((prev) => prev - 1)
       msgApi.success('删除成功')
     } else {
       msgApi.error('删除失败: ' + (result.error || '未知错误'))
     }
-  }, [msgApi])
+  }, [msgApi, invalidate])
 
   const showDetail = useCallback((invoice: Invoice) => {
     setDetailInvoice(invoice)
@@ -119,14 +117,13 @@ export default function Invoices(): React.ReactElement {
     const result = await window.api.invoices.batchDelete(ids)
     if (result.success) {
       const count = ids.length
-      setInvoices((prev) => prev.filter((inv) => !ids.includes(inv.id)))
+      invalidate()
       setSelectedRowKeys([])
-      setTotal((prev) => prev - count)
       msgApi.success(`已删除 ${count} 张发票`)
     } else {
       msgApi.error('批量删除失败: ' + (result.error || '未知错误'))
     }
-  }, [selectedRowKeys, msgApi])
+  }, [selectedRowKeys, msgApi, invalidate])
 
   const handleBatchExport = useCallback(async () => {
     const ids = selectedRowKeys.map(Number)
@@ -141,15 +138,12 @@ export default function Invoices(): React.ReactElement {
     if (trimmed) {
       const result = await window.api.invoices.update(invoiceId, { category: trimmed })
       if (result.success) {
-        setInvoices((prev) => prev.map((inv) =>
-          inv.id === invoiceId ? { ...inv, category: trimmed } : inv
-        ))
-        loadCategories()
+        invalidate()
       }
     }
     setEditingCategoryId(null)
     setEditingCategoryValue('')
-  }, [loadCategories])
+  }, [invalidate])
 
   // Edit handlers
   const handleStartEdit = useCallback(() => {
@@ -205,20 +199,10 @@ export default function Invoices(): React.ReactElement {
       if (result.success) {
         msgApi.success('发票信息已更新')
         setEditing(false)
-        const reloadResult = await window.api.invoices.getAll(filters, pagination)
-        if (reloadResult.success && reloadResult.data) {
-          const data = reloadResult.data
-          if ('items' in data) {
-            setInvoices(data.items)
-            const updated = data.items.find((inv) => inv.id === detailInvoice.id)
-            if (updated) setDetailInvoice(updated)
-          } else {
-            setInvoices(data)
-            const updated = data.find((inv) => inv.id === detailInvoice.id)
-            if (updated) setDetailInvoice(updated)
-          }
-        }
-        loadCategories()
+        invalidate()
+        // Refresh detail invoice from updated store data
+        const updated = invoices.find((inv) => inv.id === detailInvoice.id)
+        if (updated) setDetailInvoice(updated)
       } else {
         msgApi.error('更新失败: ' + (result.error || '未知错误'))
       }
@@ -227,7 +211,7 @@ export default function Invoices(): React.ReactElement {
     } finally {
       setEditLoading(false)
     }
-  }, [detailInvoice, editForm, filters, pagination, msgApi, loadCategories])
+  }, [detailInvoice, editForm, msgApi, invalidate, invoices])
 
   // Batch category
   const handleBatchCategory = useCallback(async () => {
@@ -236,25 +220,16 @@ export default function Invoices(): React.ReactElement {
       return
     }
     const ids = selectedRowKeys.map(Number)
-    let updated = 0
-    for (const id of ids) {
-      const result = await window.api.invoices.update(id, { category: batchCategoryValue.trim() })
-      if (result.success) updated++
+    const result = await window.api.invoices.batchUpdateCategory(ids, batchCategoryValue.trim())
+    if (result.success) {
+      msgApi.success(`已更新 ${ids.length} 张发票的分类`)
+    } else {
+      msgApi.error('批量分类失败: ' + (result.error || '未知错误'))
     }
-    msgApi.success(`已更新 ${updated} 张发票的分类`)
     setBatchCategoryOpen(false)
     setBatchCategoryValue('')
-    const reloadResult = await window.api.invoices.getAll(filters, pagination)
-    if (reloadResult.success && reloadResult.data) {
-      const data = reloadResult.data
-      if ('items' in data) {
-        setInvoices(data.items)
-      } else {
-        setInvoices(data)
-      }
-    }
-    loadCategories()
-  }, [selectedRowKeys, batchCategoryValue, filters, pagination, msgApi, loadCategories])
+    invalidate()
+  }, [selectedRowKeys, batchCategoryValue, msgApi, invalidate])
 
   // Columns
   const columns: ColumnsType<Invoice> = useMemo(() => [
@@ -422,50 +397,6 @@ export default function Invoices(): React.ReactElement {
     }
   ], [handleDelete, handleOpenFile, handleExportSingle, editingCategoryId, editingCategoryValue, categories, handleInlineCategorySave])
 
-  // Load invoices (server-side pagination)
-  const loadInvoices = useCallback(async () => {
-    setLoading(true)
-    const result = await window.api.invoices.getAll(filters, pagination)
-    if (result.success && result.data) {
-      const data = result.data
-      if ('items' in data) {
-        setInvoices(data.items)
-        setTotal(data.total)
-      } else {
-        setInvoices(data)
-        setTotal(data.length)
-      }
-    } else {
-      msgApi.error('加载发票失败: ' + (result.error || '未知错误'))
-    }
-    setLoading(false)
-  }, [filters, pagination, msgApi])
-
-  // Load global stats
-  const loadStats = useCallback(async () => {
-    const result = await window.api.invoices.countByStatus()
-    if (result.success && result.data) {
-      setStats(result.data)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadInvoices()
-  }, [loadInvoices])
-
-  useEffect(() => {
-    loadStats()
-  }, [loadStats])
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setPagination((prev) => ({ ...prev, page: 1 }))
-  }, [filters])
-
-  useEffect(() => {
-    loadCategories()
-  }, [loadCategories])
-
   // Auto-focus category input when editing
   useEffect(() => {
     if (editingCategoryId !== null) {
@@ -486,7 +417,6 @@ export default function Invoices(): React.ReactElement {
       if (parseResult.success && parseResult.data) {
         const { invoices: imported, skipped, failed } = parseResult.data
         if (imported.length > 0) {
-          setInvoices((prev) => [...prev, ...imported])
           msgApi.success(`成功导入 ${imported.length} 张发票`)
         }
         if (skipped.length > 0) {
@@ -498,7 +428,7 @@ export default function Invoices(): React.ReactElement {
         if (imported.length === 0 && skipped.length === 0 && failed.length === 0) {
           msgApi.info('没有新发票被导入')
         }
-        loadCategories()
+        invalidate()
       } else {
         msgApi.error('导入失败: ' + (parseResult.error || '解析错误'))
       }
@@ -507,7 +437,7 @@ export default function Invoices(): React.ReactElement {
     } finally {
       setImporting(false)
     }
-  }, [msgApi, loadCategories])
+  }, [msgApi, invalidate])
 
   // CSV export
   const handleExportCsv = useCallback(async () => {
@@ -579,7 +509,7 @@ export default function Invoices(): React.ReactElement {
             placeholder="状态"
             allowClear
             value={filters.status}
-            onChange={(v) => setFilters((f) => ({ ...f, status: v }))}
+            onChange={(v) => storeSetFilters({ ...filters, status: v })}
             options={[
               { value: 'unreimbursed', label: '未报销' },
               { value: 'reimbursed', label: '已报销' }
@@ -590,7 +520,7 @@ export default function Invoices(): React.ReactElement {
             placeholder="来源"
             allowClear
             value={filters.source}
-            onChange={(v) => setFilters((f) => ({ ...f, source: v }))}
+            onChange={(v) => storeSetFilters({ ...filters, source: v })}
             options={[
               { value: 'manual', label: '手动导入' },
               { value: 'email', label: '邮件导入' }
@@ -601,7 +531,7 @@ export default function Invoices(): React.ReactElement {
             placeholder="分类"
             allowClear
             value={filters.category || undefined}
-            onChange={(v) => setFilters((f) => ({ ...f, category: v || undefined }))}
+            onChange={(v) => storeSetFilters({ ...filters, category: v || undefined })}
             options={categories.map((c) => ({ value: c, label: c }))}
             filterOption={(input, option) =>
               (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
@@ -611,11 +541,11 @@ export default function Invoices(): React.ReactElement {
             style={{ width: 230 }}
             placeholder={['开始日期', '结束日期']}
             onChange={(dates) =>
-              setFilters((f) => ({
-                ...f,
+              storeSetFilters({
+                ...filters,
                 dateFrom: dates?.[0]?.format('YYYY-MM-DD'),
                 dateTo: dates?.[1]?.format('YYYY-MM-DD')
-              }))
+              })
             }
           />
           <Input
@@ -624,7 +554,7 @@ export default function Invoices(): React.ReactElement {
             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
             allowClear
             value={filters.keyword}
-            onChange={(e) => setFilters((f) => ({ ...f, keyword: e.target.value }))}
+            onChange={(e) => storeSetFilters({ ...filters, keyword: e.target.value })}
           />
           <InputNumber
             style={{ width: 100 }}
@@ -632,7 +562,7 @@ export default function Invoices(): React.ReactElement {
             min={0}
             precision={2}
             value={filters.amountFrom}
-            onChange={(v) => setFilters((f) => ({ ...f, amountFrom: v ?? undefined }))}
+            onChange={(v) => storeSetFilters({ ...filters, amountFrom: v ?? undefined })}
           />
           <Text type="secondary">-</Text>
           <InputNumber
@@ -641,14 +571,14 @@ export default function Invoices(): React.ReactElement {
             min={0}
             precision={2}
             value={filters.amountTo}
-            onChange={(v) => setFilters((f) => ({ ...f, amountTo: v ?? undefined }))}
+            onChange={(v) => storeSetFilters({ ...filters, amountTo: v ?? undefined })}
           />
           <Input
             style={{ width: 140 }}
             placeholder="购方名称"
             allowClear
             value={filters.buyerName}
-            onChange={(e) => setFilters((f) => ({ ...f, buyerName: e.target.value }))}
+            onChange={(e) => storeSetFilters({ ...filters, buyerName: e.target.value })}
           />
         </Space>
       </Card>
@@ -668,6 +598,9 @@ export default function Invoices(): React.ReactElement {
             <Space>
               <Button size="small" icon={<TagOutlined />} disabled={!hasSelection} onClick={() => setBatchCategoryOpen(true)}>
                 批量分类
+              </Button>
+              <Button size="small" icon={<PlusCircleOutlined />} disabled={!hasSelection} onClick={() => navigate(`/reimbursement/create?invoiceIds=${selectedRowKeys.join(',')}`)}>
+                创建报销单
               </Button>
               <Button size="small" icon={<ExportOutlined />} disabled={!hasSelection} onClick={handleBatchExport}>
                 批量导出
@@ -713,7 +646,7 @@ export default function Invoices(): React.ReactElement {
           showSizeChanger: true,
           showTotal: (t) => `共 ${t} 张`,
           pageSizeOptions: ['10', '20', '50', '100'],
-          onChange: (page, pageSize) => setPagination({ page, pageSize })
+          onChange: (page, pageSize) => storeSetPagination({ page, pageSize })
         }}
         size="middle"
         scroll={{ x: 1060 }}

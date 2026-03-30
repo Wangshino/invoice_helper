@@ -5,7 +5,6 @@ import type {
   InvoiceFilters,
   CreateInvoiceParams,
   UpdateInvoiceParams,
-  InvoiceFileType,
   EmailAccount,
   CreateEmailAccountParams,
   UpdateEmailAccountParams,
@@ -36,6 +35,7 @@ interface IpcAPI {
     readFileAsBase64: (id: number) => Promise<IpcResult<string>>
     extractOfdImages: (id: number) => Promise<IpcResult<string[]>>
     batchDelete: (ids: number[]) => Promise<IpcResult<void>>
+    batchUpdateCategory: (ids: number[], category: string) => Promise<IpcResult<void>>
     exportFiles: (ids: number[]) => Promise<IpcResult<string>>
     update: (id: number, params: UpdateInvoiceParams) => Promise<IpcResult<void>>
     getCategories: () => Promise<IpcResult<string[]>>
@@ -55,6 +55,18 @@ interface IpcAPI {
     listFoldersById: (accountId: number) => Promise<IpcResult<string[]>>
     resetSync: (id: number) => Promise<IpcResult<void>>
   }
+  emailSync: {
+    getLog: () => Promise<IpcResult<string>>
+    clearLog: () => Promise<IpcResult<void>>
+    setDebug: (enabled: boolean) => Promise<IpcResult<void>>
+  }
+  syncLogs: {
+    getAll: (accountId?: number) => Promise<IpcResult<SyncLog[]>>
+    getById: (id: number) => Promise<IpcResult<SyncLog | null>>
+    remove: (id: number) => Promise<IpcResult<void>>
+    clearAll: () => Promise<IpcResult<void>>
+    clearByAccount: (accountId: number) => Promise<IpcResult<void>>
+  }
   reimbursements: {
     getAll: (filters?: ReimbursementFilters, pagination?: { page: number; pageSize: number }) => Promise<IpcResult<Reimbursement[] | PaginatedResult<Reimbursement>>>
     getById: (id: number) => Promise<IpcResult<Reimbursement | null>>
@@ -68,28 +80,16 @@ interface IpcAPI {
   matching: {
     findBestCombinations: (targetAmount: number) => Promise<IpcResult<MatchingResult[]>>
   }
-  settings: {
-    get: (key: string) => Promise<IpcResult<string | undefined>>
-    set: (key: string, value: string) => Promise<IpcResult<void>>
-    getAll: () => Promise<IpcResult<Record<string, string>>>
-  }
-  emailSync: {
-    getLog: () => Promise<IpcResult<string>>
-    clearLog: () => Promise<IpcResult<void>>
-    setDebug: (enabled: boolean) => Promise<IpcResult<void>>
-  }
-  syncLogs: {
-    getAll: (accountId?: number) => Promise<IpcResult<SyncLog[]>>
-    getById: (id: number) => Promise<IpcResult<SyncLog | null>>
-    remove: (id: number) => Promise<IpcResult<void>>
-    clearAll: () => Promise<IpcResult<void>>
-    clearByAccount: (accountId: number) => Promise<IpcResult<void>>
-  }
   sentEmails: {
     getAll: () => Promise<IpcResult<SentEmail[]>>
     findByReimbursement: (reimbId: number) => Promise<IpcResult<SentEmail[]>>
     remove: (id: number) => Promise<IpcResult<void>>
     clearAll: () => Promise<IpcResult<void>>
+  }
+  settings: {
+    get: (key: string) => Promise<IpcResult<string | undefined>>
+    set: (key: string, value: string) => Promise<IpcResult<void>>
+    getAll: () => Promise<IpcResult<Record<string, string>>>
   }
   app: {
     getVersion: () => Promise<IpcResult<string>>

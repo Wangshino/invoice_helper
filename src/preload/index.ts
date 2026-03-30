@@ -61,6 +61,9 @@ const api = {
     batchDelete: (ids: number[]): Promise<IpcResult<void>> =>
       ipcRenderer.invoke('invoices:batchDelete', ids),
 
+    batchUpdateCategory: (ids: number[], category: string): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('invoices:batchUpdateCategory', ids, category),
+
     exportFiles: (ids: number[]): Promise<IpcResult<string>> =>
       ipcRenderer.invoke('invoices:exportFiles', ids),
 

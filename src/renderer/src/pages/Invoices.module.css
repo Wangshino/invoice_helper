@@ -1,0 +1,26 @@
+.statsBar {
+  display: flex;
+  gap: 8px;
+}
+
+.statsTag {
+  margin: 0;
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.filterCard {
+  margin-bottom: 16px;
+  background: #fafafa;
+}
+
+.batchBar {
+  margin-bottom: 12px;
+}
+
+.batchBarContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

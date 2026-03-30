@@ -106,7 +106,7 @@ interface IpcAPI {
   }
   updater: {
     check: () => Promise<IpcResult<void>>
-    download: () => Promise<IpcResult<void>>
+    download: () => Promise<IpcResult<string | undefined>>
     install: () => Promise<IpcResult<void>>
     onStatus: (callback: (status: string, info?: string) => void) => () => void
     onProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => () => void

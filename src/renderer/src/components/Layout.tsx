@@ -156,7 +156,12 @@ export default function Layout({ children }: LayoutProps): React.ReactElement {
 
   const handleDownload = useCallback(async () => {
     try {
-      await window.api.updater.download()
+      const res = await window.api.updater.download()
+      // macOS: 后端直接打开浏览器下载页，前端关闭弹窗
+      if (res.success && res.data === 'opened-browser') {
+        setUpdateInfo('已打开下载页面，请在浏览器中下载安装')
+        setTimeout(() => setAboutOpen(false), 2000)
+      }
     } catch {
       setUpdateStatus('error')
       setUpdateInfo('下载失败')

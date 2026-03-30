@@ -472,7 +472,7 @@ export default function EmailImport(): React.ReactElement {
                   dataSource={syncLogs}
                   rowKey="id"
                   size="small"
-                  pagination={{ pageSize: 20, showSizeChanger: false }}
+                  pagination={{ pageSize: 20, showSizeChanger: false, style: { margin: '8px 16px' } }}
                 />
               </div>
             )

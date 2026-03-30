@@ -12,13 +12,9 @@ import {
   Input,
   InputNumber,
   Modal,
-  Descriptions,
   Alert,
   Tooltip,
   Card,
-  Form,
-  Row,
-  Col,
   AutoComplete
 } from 'antd'
 import {
@@ -29,15 +25,14 @@ import {
   ExportOutlined,
   FilePdfOutlined,
   FileTextOutlined as FileXmlOutlined,
-  EditOutlined,
   TagOutlined,
   EyeOutlined
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
-import type { Invoice, UpdateInvoiceParams } from '../../../shared/types'
-import InvoicePreview from '../components/InvoicePreview'
+import type { Invoice } from '../../../shared/types'
+import InvoiceDetailModal from '../components/InvoiceDetailModal'
 import { useInvoiceStore } from '../stores/invoice-store'
 
 const { Text } = Typography
@@ -61,11 +56,6 @@ export default function Invoices(): React.ReactElement {
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
   const [importing, setImporting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
-
-  // Edit mode
-  const [editing, setEditing] = useState(false)
-  const [editForm] = Form.useForm()
-  const [editLoading, setEditLoading] = useState(false)
 
   // Batch category
   const [batchCategoryValue, setBatchCategoryValue] = useState<string>('')
@@ -97,7 +87,6 @@ export default function Invoices(): React.ReactElement {
 
   const showDetail = useCallback((invoice: Invoice) => {
     setDetailInvoice(invoice)
-    setEditing(false)
     setDetailOpen(true)
   }, [])
 
@@ -144,74 +133,6 @@ export default function Invoices(): React.ReactElement {
     setEditingCategoryId(null)
     setEditingCategoryValue('')
   }, [invalidate])
-
-  // Edit handlers
-  const handleStartEdit = useCallback(() => {
-    if (!detailInvoice) return
-    Modal.confirm({
-      title: '确认编辑发票信息',
-      content: '手动修改发票信息可能导致与原始文件不一致，请确认修改内容准确无误后再保存。',
-      okText: '确认编辑',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => {
-        editForm.setFieldsValue({
-          invoiceNumber: detailInvoice.invoiceNumber || '',
-          invoiceCode: detailInvoice.invoiceCode || '',
-          invoiceDate: detailInvoice.invoiceDate || '',
-          invoiceType: detailInvoice.invoiceType || '',
-          sellerName: detailInvoice.sellerName || '',
-          sellerTaxId: detailInvoice.sellerTaxId || '',
-          buyerName: detailInvoice.buyerName || '',
-          buyerTaxId: detailInvoice.buyerTaxId || '',
-          amount: detailInvoice.amount,
-          taxAmount: detailInvoice.taxAmount,
-          totalAmount: detailInvoice.totalAmount,
-          invoiceContent: detailInvoice.invoiceContent || '',
-          category: detailInvoice.category || undefined
-        })
-        setEditing(true)
-      }
-    })
-  }, [detailInvoice, editForm])
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!detailInvoice) return
-    try {
-      const values = await editForm.validateFields()
-      setEditLoading(true)
-      const params: UpdateInvoiceParams = {
-        invoiceNumber: values.invoiceNumber || undefined,
-        invoiceCode: values.invoiceCode || undefined,
-        invoiceDate: values.invoiceDate || undefined,
-        invoiceType: values.invoiceType || undefined,
-        sellerName: values.sellerName || undefined,
-        sellerTaxId: values.sellerTaxId || undefined,
-        buyerName: values.buyerName || undefined,
-        buyerTaxId: values.buyerTaxId || undefined,
-        amount: values.amount,
-        taxAmount: values.taxAmount,
-        totalAmount: values.totalAmount,
-        invoiceContent: values.invoiceContent || undefined,
-        category: values.category || undefined
-      }
-      const result = await window.api.invoices.update(detailInvoice.id, params)
-      if (result.success) {
-        msgApi.success('发票信息已更新')
-        setEditing(false)
-        invalidate()
-        // Refresh detail invoice from updated store data
-        const updated = invoices.find((inv) => inv.id === detailInvoice.id)
-        if (updated) setDetailInvoice(updated)
-      } else {
-        msgApi.error('更新失败: ' + (result.error || '未知错误'))
-      }
-    } catch {
-      // form validation error
-    } finally {
-      setEditLoading(false)
-    }
-  }, [detailInvoice, editForm, msgApi, invalidate, invoices])
 
   // Batch category
   const handleBatchCategory = useCallback(async () => {
@@ -646,152 +567,26 @@ export default function Invoices(): React.ReactElement {
           showSizeChanger: true,
           showTotal: (t) => `共 ${t} 张`,
           pageSizeOptions: ['10', '20', '50', '100'],
-          onChange: (page, pageSize) => storeSetPagination({ page, pageSize })
+          onChange: (page, pageSize) => storeSetPagination({ page, pageSize }),
+          style: { margin: '8px 16px' }
         }}
         size="middle"
         scroll={{ x: 1060 }}
         locale={{ emptyText: '暂无发票数据，点击"导入发票"开始' }}
       />
 
-      {/* Detail Modal — 2-row layout: info top, preview bottom */}
-      <Modal
-        title={
-          <Space>
-            {detailInvoice && fileTypeIcon[detailInvoice.fileType]}
-            <span>发票详情</span>
-            {detailInvoice?.invoiceNumber && (
-              <Text type="secondary" style={{ fontWeight: 'normal', fontSize: 13 }}>
-                {detailInvoice.invoiceNumber}
-              </Text>
-            )}
-          </Space>
-        }
+      {/* Invoice Detail Modal */}
+      <InvoiceDetailModal
+        invoice={detailInvoice}
         open={detailOpen}
-        onCancel={() => { setDetailOpen(false); setEditing(false) }}
-        width={1100}
-        styles={{ body: { maxHeight: '80vh', overflow: 'auto' } }}
-        footer={
-          detailInvoice ? (
-            <Space>
-              <Button icon={<EyeOutlined />} onClick={() => handleOpenFile(detailInvoice.id)}>
-                预览
-              </Button>
-              <Button icon={<ExportOutlined />} onClick={() => handleExportSingle(detailInvoice.id)}>
-                导出
-              </Button>
-              {!editing && (
-                <Button icon={<EditOutlined />} onClick={handleStartEdit}>
-                  编辑
-                </Button>
-              )}
-              {editing && (
-                <>
-                  <Button type="primary" loading={editLoading} onClick={handleSaveEdit}>
-                    保存
-                  </Button>
-                  <Button onClick={() => setEditing(false)}>取消编辑</Button>
-                </>
-              )}
-              <Button onClick={() => { setDetailOpen(false); setEditing(false) }}>关闭</Button>
-            </Space>
-          ) : null
-        }
-      >
-        {detailInvoice && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {/* Top: Info section */}
-            <div>
-              {editing ? (
-                <Form form={editForm} layout="vertical" size="small">
-                  <Row gutter={16}>
-                    <Col span={12}><Form.Item label="发票号码" name="invoiceNumber"><Input /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="发票代码" name="invoiceCode"><Input /></Form.Item></Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}><Form.Item label="开票日期" name="invoiceDate"><Input placeholder="YYYY-MM-DD" /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="发票类型" name="invoiceType"><Input /></Form.Item></Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}><Form.Item label="销方名称" name="sellerName"><Input /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="销方税号" name="sellerTaxId"><Input /></Form.Item></Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}><Form.Item label="购方名称" name="buyerName"><Input /></Form.Item></Col>
-                    <Col span={12}><Form.Item label="购方税号" name="buyerTaxId"><Input /></Form.Item></Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={8}><Form.Item label="金额" name="amount"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={8}><Form.Item label="税额" name="taxAmount"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                    <Col span={8}><Form.Item label="价税合计" name="totalAmount"><InputNumber min={0} precision={2} style={{ width: '100%' }} /></Form.Item></Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}><Form.Item label="发票内容" name="invoiceContent"><Input /></Form.Item></Col>
-                    <Col span={12}>
-                      <Form.Item label="分类" name="category">
-                        <AutoComplete
-                          allowClear
-                          placeholder="选择或输入分类"
-                          options={categories.map((c) => ({ value: c, label: c }))}
-                          filterOption={(input, option) =>
-                            (option?.label as string)?.toLowerCase().includes(input.toLowerCase())
-                          }
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                </Form>
-              ) : (
-                <Descriptions column={2} size="small" bordered>
-                  <Descriptions.Item label="发票号码">
-                    <Text copyable>{detailInvoice.invoiceNumber || '-'}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="开票日期">{detailInvoice.invoiceDate || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="发票代码">{detailInvoice.invoiceCode || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="发票类型">{detailInvoice.invoiceType || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="销方名称">{detailInvoice.sellerName || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="销方税号">
-                    <Text copyable>{detailInvoice.sellerTaxId || '-'}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="购方名称">{detailInvoice.buyerName || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="购方税号">
-                    <Text copyable>{detailInvoice.buyerTaxId || '-'}</Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="金额">
-                    {detailInvoice.amount != null ? `¥${detailInvoice.amount.toFixed(2)}` : '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="税额">
-                    {detailInvoice.taxAmount != null ? `¥${detailInvoice.taxAmount.toFixed(2)}` : '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="价税合计">
-                    <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
-                      {detailInvoice.totalAmount != null ? `¥${detailInvoice.totalAmount.toFixed(2)}` : '-'}
-                    </Text>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="分类">
-                    {detailInvoice.category ? <Tag color="blue">{detailInvoice.category}</Tag> : '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="状态">
-                    <Tag color={detailInvoice.status === 'reimbursed' ? 'success' : 'warning'}>
-                      {detailInvoice.status === 'reimbursed' ? '已报销' : '未报销'}
-                    </Tag>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="发票内容">{detailInvoice.invoiceContent || '-'}</Descriptions.Item>
-                  <Descriptions.Item label="文件类型">
-                    {detailInvoice.fileType?.toUpperCase() || '-'}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="来源">
-                    {detailInvoice.source === 'email' ? '邮件导入' : '手动导入'}
-                  </Descriptions.Item>
-                </Descriptions>
-              )}
-            </div>
-            {/* Bottom: Preview */}
-            <div>
-              <InvoicePreview invoice={detailInvoice} />
-            </div>
-          </div>
-        )}
-      </Modal>
+        onClose={() => setDetailOpen(false)}
+        categories={categories}
+        editable={true}
+        onSaved={() => {
+          invalidate()
+          loadCategories()
+        }}
+      />
 
       {/* Batch Category Modal */}
       <Modal

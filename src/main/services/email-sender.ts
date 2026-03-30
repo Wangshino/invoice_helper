@@ -45,6 +45,14 @@ function createTransporter(accountId: number): nodemailer.Transporter {
 function getDefaultAccount(): { email: string; id: number } | null {
   const accounts = emailAccountRepo.findAll()
   if (accounts.length === 0) return null
+
+  // 优先使用 settings 中配置的默认发件账户
+  const preferredId = settingsRepo.get(SETTINGS_KEYS.DEFAULT_SENDER_ACCOUNT_ID)
+  if (preferredId) {
+    const preferred = accounts.find((a) => String(a.id) === preferredId)
+    if (preferred) return { email: preferred.email, id: preferred.id }
+  }
+
   return { email: accounts[0].email, id: accounts[0].id }
 }
 
@@ -87,10 +95,13 @@ function prepareAttachments(
   // ≤2 个附件: 原样附加
   if (validFiles.length <= 2) {
     return {
-      attachments: validFiles.map((p) => ({
-        filename: basename(p),
-        path: p
-      }))
+      attachments: validFiles.map((p) => {
+        const inv = invoices.find((v) => v.file_path === p)
+        return {
+          filename: inv?.file_name || basename(p),
+          path: p
+        }
+      })
     }
   }
 

@@ -24,7 +24,7 @@ import {
   extractInvoiceDownloadLinks
 } from './attachment-utils'
 import { fetchMessages, downloadAttachment, listMailboxes, fetchEmailHtml } from './email-imap'
-import { parseInvoiceFile, storeInvoiceFile, detectFileType } from './invoice-parser'
+import { parseInvoiceFile, storeInvoiceFile, detectFileType, buildStandardFileName } from './invoice-parser'
 import type { ImapConfig } from './email-imap'
 import type { Invoice, EmailSyncResult } from '../../shared/types'
 import { FieldMappers } from '../../shared/types'
@@ -337,7 +337,9 @@ async function processAttachmentBuffer(
 
     // 存储文件 + 入库
     const fileType = detectFileType(tempPath)
-    const filePath = storeInvoiceFile(tempPath)
+    const ext = filename.split('.').pop() || fileType
+    const standardName = buildStandardFileName(parsed, ext)
+    const filePath = storeInvoiceFile(tempPath, standardName)
 
     const id = invoiceRepo.create({
       invoiceNumber: parsed.invoiceNumber,
@@ -351,9 +353,10 @@ async function processAttachmentBuffer(
       amount: parsed.amount,
       taxAmount: parsed.taxAmount,
       totalAmount: parsed.totalAmount,
+      invoiceContent: parsed.invoiceContent,
       filePath,
       fileType,
-      fileName: filename,
+      fileName: standardName,
       source: 'email',
       emailAccountId: accountId,
       emailSubject

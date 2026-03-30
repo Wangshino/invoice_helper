@@ -1,6 +1,6 @@
 {
   "name": "invoice-helper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "发票管理助手 - 智能发票管理与报销工具",
   "main": "./out/main/index.js",
   "author": "Wangshino",

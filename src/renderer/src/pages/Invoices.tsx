@@ -49,6 +49,7 @@ export default function Invoices(): React.ReactElement {
   const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null)
   const [importing, setImporting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [pageSize, setPageSize] = useState(20)
 
   // Actions
   const handleDelete = useCallback(async (id: number) => {
@@ -403,10 +404,11 @@ export default function Invoices(): React.ReactElement {
           style: { cursor: 'pointer', transition: 'background 0.15s' }
         })}
         pagination={{
-          pageSize: 20,
+          pageSize,
           showSizeChanger: true,
           showTotal: (total) => `共 ${total} 张`,
-          pageSizeOptions: ['10', '20', '50', '100']
+          pageSizeOptions: ['10', '20', '50', '100'],
+          onChange: (_, size) => setPageSize(size)
         }}
         size="middle"
         scroll={{ x: 960 }}

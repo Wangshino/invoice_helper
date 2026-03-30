@@ -30,9 +30,23 @@ export function findAll(filters?: InvoiceFilters, pagination?: PaginationParams)
     params.push(filters.source)
   }
   if (filters?.keyword) {
-    joinFts = true
-    whereSql += ' AND invoices_fts MATCH ?'
-    params.push(`"${filters.keyword.replace(/"/g, '""')}"`)
+    if (filters.keyword.length >= 3) {
+      joinFts = true
+      whereSql += ' AND invoices_fts MATCH ?'
+      params.push(`"${filters.keyword.replace(/"/g, '""')}"`)
+    } else {
+      // 短词(<3字)回退到 LIKE，trigram 无法匹配少于3字符的查询
+      const like = `%${filters.keyword}%`
+      whereSql += ` AND (
+        invoices.invoice_number LIKE ? OR
+        invoices.seller_name LIKE ? OR
+        invoices.buyer_name LIKE ? OR
+        invoices.invoice_type LIKE ? OR
+        invoices.invoice_content LIKE ? OR
+        invoices.file_name LIKE ?
+      )`
+      params.push(like, like, like, like, like, like)
+    }
   }
   if (filters?.category) {
     whereSql += ' AND invoices.category = ?'

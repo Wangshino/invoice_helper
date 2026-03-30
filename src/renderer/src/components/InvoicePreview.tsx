@@ -15,8 +15,11 @@ import type { Invoice } from '../../../shared/types'
 
 const { Text } = Typography
 
-// Configure pdfjs worker — serve from renderer public dir
-pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+// Configure pdfjs worker
+// In dev: Vite dev server serves from root
+// In production: public files are copied to out/renderer/ alongside index.html
+// Using a relative path from index.html works in both cases
+pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.min.mjs'
 
 interface InvoicePreviewProps {
   invoice: Invoice

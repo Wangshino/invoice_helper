@@ -41,6 +41,7 @@ mac:
     NSDownloadsFolderUsageDescription: 'Application requests access to the user''s Downloads folder.'
   notarize: false
   target:
+    - zip
     - dmg
 dmg:
   artifactName: ${name}-${version}.${ext}

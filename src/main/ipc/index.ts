@@ -6,7 +6,7 @@ import * as settingsRepo from '../repositories/settings-repository'
 import * as syncLogRepo from '../repositories/sync-log-repository'
 import * as sentEmailRepo from '../repositories/sent-email-repository'
 import { findBestCombinations } from '../services/matching'
-import { storeInvoiceFile, deleteStoredFile, parseInvoiceFile, detectFileType } from '../services/invoice-parser'
+import { storeInvoiceFile, deleteStoredFile, parseInvoiceFile, detectFileType, buildStandardFileName } from '../services/invoice-parser'
 import { testImapConnection, listMailboxes } from '../services/email-imap'
 import { syncEmailAccount, getSyncLog, clearSyncLog, setDebugMode } from '../services/email-sync'
 import { sendReimbursementEmail, previewReimbursementEmail } from '../services/email-sender'
@@ -17,6 +17,7 @@ import type {
   Invoice,
   InvoiceFilters,
   CreateInvoiceParams,
+  UpdateInvoiceParams,
   EmailAccountRow,
   EmailAccount,
   CreateEmailAccountParams,
@@ -31,9 +32,11 @@ import type {
   ImportSummary,
   EmailSyncResult,
   SyncLog,
-  SentEmail
+  SentEmail,
+  PaginationParams,
+  PaginatedResult
 } from '../../shared/types'
-import { basename } from 'path'
+import { basename, join } from 'path'
 import * as fs from 'fs'
 import AdmZip from 'adm-zip'
 
@@ -101,7 +104,11 @@ function mapReimbursement(row: ReimbursementRow, invoices?: Invoice[]): Reimburs
 export function registerIpcHandlers(): void {
   // ============ Invoices ============
 
-  safeHandle<IpcResult<Invoice[]>>('invoices:getAll', (filters?: InvoiceFilters) => {
+  safeHandle<IpcResult<Invoice[] | PaginatedResult<Invoice>>>('invoices:getAll', (filters?: InvoiceFilters, pagination?: PaginationParams) => {
+    if (pagination) {
+      const result = invoiceRepo.findAll(filters ?? {}, pagination)
+      return ok({ items: mapInvoices(result.items), total: result.total, page: pagination.page, pageSize: pagination.pageSize })
+    }
     const rows = invoiceRepo.findAll(filters)
     return ok(mapInvoices(rows))
   })
@@ -159,9 +166,11 @@ export function registerIpcHandlers(): void {
           }
         }
 
-        // 3. 解析成功且无重复 → 存储文件
+        // 3. 解析成功且无重复 → 存储文件（使用标准文件名）
         const fileType = detectFileType(sourcePath)
-        const filePath = storeInvoiceFile(sourcePath)
+        const ext = sourcePath.split('.').pop() || fileType
+        const standardName = buildStandardFileName(parsed, ext)
+        const filePath = storeInvoiceFile(sourcePath, standardName)
 
         // 4. 入库
         const id = invoiceRepo.create({
@@ -176,9 +185,10 @@ export function registerIpcHandlers(): void {
           amount: parsed.amount,
           taxAmount: parsed.taxAmount,
           totalAmount: parsed.totalAmount,
+          invoiceContent: parsed.invoiceContent,
           filePath,
           fileType,
-          fileName,
+          fileName: standardName,
           source: 'manual'
         })
         const row = invoiceRepo.findById(id)
@@ -204,6 +214,68 @@ export function registerIpcHandlers(): void {
       return ok(invoiceRepo.countByStatus())
     }
   )
+
+  safeHandle<IpcResult<void>>('invoices:update', (id: unknown, params: UpdateInvoiceParams) => {
+    invoiceRepo.update(Number(id), params)
+    return ok(undefined)
+  })
+
+  safeHandle<IpcResult<string[]>>('invoices:getCategories', () => {
+    return ok(invoiceRepo.getCategories())
+  })
+
+  safeHandle<IpcResult<string>>('invoices:exportCsv', async (filters?: InvoiceFilters) => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return err('No focused window')
+
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: `发票台账_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    })
+    if (result.canceled || !result.filePath) return ok('')
+
+    const rows = invoiceRepo.findAll(filters)
+    const header = '发票号码,发票代码,开票日期,发票类型,发票内容,销方名称,销方税号,购方名称,购方税号,金额,税额,价税合计,分类,状态,来源,文件名\n'
+    const csvRows = rows.map(r =>
+      [r.invoice_number, r.invoice_code, r.invoice_date, r.invoice_type, r.invoice_content,
+       r.seller_name, r.seller_tax_id, r.buyer_name, r.buyer_tax_id,
+       r.amount, r.tax_amount, r.total_amount, r.category,
+       r.status === 'reimbursed' ? '已报销' : '未报销',
+       r.source === 'email' ? '邮件' : '手动', r.file_name
+      ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+    ).join('\n')
+
+    fs.writeFileSync(result.filePath, '\ufeff' + header + csvRows, 'utf-8')
+    return ok(`已导出 ${rows.length} 条到 ${result.filePath}`)
+  })
+
+  safeHandle<IpcResult<string>>('invoices:batchRename', () => {
+    const all = invoiceRepo.findAll({})
+    let renamed = 0
+    const storageDir = join(app.getPath('userData'), 'invoices')
+
+    for (const row of all) {
+      if (!row.file_path || !row.invoice_number) continue
+      // 生成标准文件名
+      const ext = row.file_path.split('.').pop() || 'pdf'
+      const content = (row.invoice_content || '未知内容').replace(/[\\/:*?"<>|]/g, '_').slice(0, 30)
+      const amount = row.total_amount != null ? row.total_amount.toFixed(2) : '0.00'
+      const date = row.invoice_date || 'unknown'
+      const standardName = `${row.invoice_number}-${content}-${amount}-${date}.${ext}`
+
+      // 如果文件名已经是标准名则跳过
+      if (row.file_name === standardName) continue
+
+      const newFilePath = join(storageDir, standardName)
+      // 重命名磁盘文件
+      if (fs.existsSync(row.file_path) && row.file_path !== newFilePath) {
+        fs.renameSync(row.file_path, newFilePath)
+        invoiceRepo.updateFilePathAndName(row.id, newFilePath, standardName)
+        renamed++
+      }
+    }
+    return ok(`已重命名 ${renamed} 个文件`)
+  })
 
   // ============ Email Accounts ============
 
@@ -353,10 +425,22 @@ export function registerIpcHandlers(): void {
       const zip = new AdmZip(row.file_path)
       const entries = zip.getEntries()
       const images: string[] = []
+
+      function detectMime(data: Buffer): string | null {
+        const h = data.toString('hex', 0, 4).toLowerCase()
+        if (h.startsWith('89504e47')) return 'image/png'
+        if (h.startsWith('ffd8')) return 'image/jpeg'
+        if (h.startsWith('424d')) return 'image/bmp'
+        if (h.startsWith('474946')) return 'image/gif'
+        return null
+      }
+
       for (const entry of entries) {
         if (entry.isDirectory) continue
-        if (/\.(png|jpg|jpeg|bmp|gif|tif|tiff)$/i.test(entry.entryName)) {
-          const ext = entry.entryName.split('.').pop()?.toLowerCase() ?? 'png'
+        const name = entry.entryName
+        // Standard image extensions
+        if (/\.(png|jpg|jpeg|bmp|gif|tif|tiff)$/i.test(name)) {
+          const ext = name.split('.').pop()?.toLowerCase() ?? 'png'
           const mime =
             ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
             ext === 'bmp' ? 'image/bmp' :
@@ -366,6 +450,21 @@ export function registerIpcHandlers(): void {
           images.push(`data:${mime};base64,${entry.getData().toString('base64')}`)
         }
       }
+
+      // Fallback: check OFD resource directories for image files by magic bytes
+      if (images.length === 0) {
+        for (const entry of entries) {
+          if (entry.isDirectory) continue
+          if (/\/Res\//i.test(entry.entryName) && entry.header.size > 100) {
+            const data = entry.getData()
+            const mime = detectMime(data)
+            if (mime) {
+              images.push(`data:${mime};base64,${data.toString('base64')}`)
+            }
+          }
+        }
+      }
+
       return ok(images)
     } catch {
       return ok([])
@@ -400,7 +499,8 @@ export function registerIpcHandlers(): void {
     for (const id of idList) {
       const row = invoiceRepo.findById(id)
       if (!row?.file_path) continue
-      const destPath = join(destDir, basename(row.file_path))
+      const exportName = row.file_name || basename(row.file_path)
+      const destPath = join(destDir, exportName)
       fs.copyFileSync(row.file_path, destPath)
       exported++
     }
@@ -409,7 +509,11 @@ export function registerIpcHandlers(): void {
 
   // ============ Reimbursements ============
 
-  safeHandle<IpcResult<Reimbursement[]>>('reimbursements:getAll', (filters?: ReimbursementFilters) => {
+  safeHandle<IpcResult<Reimbursement[] | PaginatedResult<Reimbursement>>>('reimbursements:getAll', (filters?: ReimbursementFilters, pagination?: PaginationParams) => {
+    if (pagination) {
+      const result = reimbursementRepo.findAll(filters ?? {}, pagination)
+      return ok({ items: result.items.map((r) => mapReimbursement(r)), total: result.total, page: pagination.page, pageSize: pagination.pageSize })
+    }
     const rows = reimbursementRepo.findAll(filters)
     return ok(rows.map((r) => mapReimbursement(r)))
   })

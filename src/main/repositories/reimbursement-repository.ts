@@ -4,33 +4,44 @@ import type {
   InvoiceRow,
   CreateReimbursementParams,
   UpdateReimbursementParams,
-  ReimbursementFilters
+  ReimbursementFilters,
+  PaginationParams
 } from '../../shared/types'
 
 // ============================================================
 // Reimbursement Repository
 // ============================================================
 
-export function findAll(filters?: ReimbursementFilters): ReimbursementRow[] {
+export function findAll(filters?: ReimbursementFilters): ReimbursementRow[]
+export function findAll(filters: ReimbursementFilters, pagination: PaginationParams): { items: ReimbursementRow[]; total: number }
+export function findAll(filters?: ReimbursementFilters, pagination?: PaginationParams) {
   const db = getDb()
-  let sql = 'SELECT * FROM reimbursements WHERE 1=1'
+  let whereSql = 'WHERE 1=1'
   const params: unknown[] = []
 
   if (filters?.status && filters.status !== 'all') {
-    sql += ' AND status = ?'
+    whereSql += ' AND status = ?'
     params.push(filters.status)
   }
   if (filters?.dateFrom) {
-    sql += ' AND date >= ?'
+    whereSql += ' AND date >= ?'
     params.push(filters.dateFrom)
   }
   if (filters?.dateTo) {
-    sql += ' AND date <= ?'
+    whereSql += ' AND date <= ?'
     params.push(filters.dateTo)
   }
 
-  sql += ' ORDER BY date DESC, created_at DESC'
-  return db.prepare(sql).all(...params) as ReimbursementRow[]
+  if (pagination) {
+    const countSql = `SELECT COUNT(*) as total FROM reimbursements ${whereSql}`
+    const { total } = db.prepare(countSql).get(...params) as { total: number }
+    const offset = (pagination.page - 1) * pagination.pageSize
+    const dataSql = `SELECT * FROM reimbursements ${whereSql} ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?`
+    const items = db.prepare(dataSql).all(...params, pagination.pageSize, offset) as ReimbursementRow[]
+    return { items, total }
+  }
+
+  return db.prepare(`SELECT * FROM reimbursements ${whereSql} ORDER BY date DESC, created_at DESC`).all(...params) as ReimbursementRow[]
 }
 
 export function findById(id: number): ReimbursementRow | undefined {

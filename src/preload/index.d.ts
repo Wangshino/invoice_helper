@@ -4,6 +4,7 @@ import type {
   Invoice,
   InvoiceFilters,
   CreateInvoiceParams,
+  UpdateInvoiceParams,
   InvoiceFileType,
   EmailAccount,
   CreateEmailAccountParams,
@@ -17,12 +18,13 @@ import type {
   ImportSummary,
   EmailSyncResult,
   SyncLog,
-  SentEmail
+  SentEmail,
+  PaginatedResult
 } from '../shared/types'
 
 interface IpcAPI {
   invoices: {
-    getAll: (filters?: InvoiceFilters) => Promise<IpcResult<Invoice[]>>
+    getAll: (filters?: InvoiceFilters, pagination?: { page: number; pageSize: number }) => Promise<IpcResult<Invoice[] | PaginatedResult<Invoice>>>
     getById: (id: number) => Promise<IpcResult<Invoice | null>>
     create: (params: CreateInvoiceParams) => Promise<IpcResult<{ id: number }>>
     remove: (id: number) => Promise<IpcResult<void>>
@@ -35,6 +37,10 @@ interface IpcAPI {
     extractOfdImages: (id: number) => Promise<IpcResult<string[]>>
     batchDelete: (ids: number[]) => Promise<IpcResult<void>>
     exportFiles: (ids: number[]) => Promise<IpcResult<string>>
+    update: (id: number, params: UpdateInvoiceParams) => Promise<IpcResult<void>>
+    getCategories: () => Promise<IpcResult<string[]>>
+    batchRename: () => Promise<IpcResult<string>>
+    exportCsv: (filters?: InvoiceFilters) => Promise<IpcResult<string>>
   }
   emailAccounts: {
     getAll: () => Promise<IpcResult<EmailAccount[]>>
@@ -50,7 +56,7 @@ interface IpcAPI {
     resetSync: (id: number) => Promise<IpcResult<void>>
   }
   reimbursements: {
-    getAll: (filters?: ReimbursementFilters) => Promise<IpcResult<Reimbursement[]>>
+    getAll: (filters?: ReimbursementFilters, pagination?: { page: number; pageSize: number }) => Promise<IpcResult<Reimbursement[] | PaginatedResult<Reimbursement>>>
     getById: (id: number) => Promise<IpcResult<Reimbursement | null>>
     create: (params: CreateReimbursementParams) => Promise<IpcResult<{ id: number }>>
     update: (id: number, params: UpdateReimbursementParams) => Promise<IpcResult<void>>

@@ -5,6 +5,7 @@ import type {
   Invoice,
   InvoiceFilters,
   CreateInvoiceParams,
+  UpdateInvoiceParams,
   EmailAccount,
   CreateEmailAccountParams,
   UpdateEmailAccountParams,
@@ -17,14 +18,15 @@ import type {
   ImportSummary,
   EmailSyncResult,
   SyncLog,
-  SentEmail
+  SentEmail,
+  PaginatedResult
 } from '../shared/types'
 
 const api = {
   // ============ Invoices ============
   invoices: {
-    getAll: (filters?: InvoiceFilters): Promise<IpcResult<Invoice[]>> =>
-      ipcRenderer.invoke('invoices:getAll', filters),
+    getAll: (filters?: InvoiceFilters, pagination?: { page: number; pageSize: number }): Promise<IpcResult<Invoice[] | PaginatedResult<Invoice>>> =>
+      ipcRenderer.invoke('invoices:getAll', filters, pagination),
 
     getById: (id: number): Promise<IpcResult<Invoice | null>> =>
       ipcRenderer.invoke('invoices:getById', id),
@@ -60,7 +62,19 @@ const api = {
       ipcRenderer.invoke('invoices:batchDelete', ids),
 
     exportFiles: (ids: number[]): Promise<IpcResult<string>> =>
-      ipcRenderer.invoke('invoices:exportFiles', ids)
+      ipcRenderer.invoke('invoices:exportFiles', ids),
+
+    update: (id: number, params: UpdateInvoiceParams): Promise<IpcResult<void>> =>
+      ipcRenderer.invoke('invoices:update', id, params),
+
+    getCategories: (): Promise<IpcResult<string[]>> =>
+      ipcRenderer.invoke('invoices:getCategories'),
+
+    batchRename: (): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('invoices:batchRename'),
+
+    exportCsv: (filters?: InvoiceFilters): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke('invoices:exportCsv', filters)
   },
 
   // ============ Email Accounts ============
@@ -131,8 +145,8 @@ const api = {
 
   // ============ Reimbursements ============
   reimbursements: {
-    getAll: (filters?: ReimbursementFilters): Promise<IpcResult<Reimbursement[]>> =>
-      ipcRenderer.invoke('reimbursements:getAll', filters),
+    getAll: (filters?: ReimbursementFilters, pagination?: { page: number; pageSize: number }): Promise<IpcResult<Reimbursement[] | PaginatedResult<Reimbursement>>> =>
+      ipcRenderer.invoke('reimbursements:getAll', filters, pagination),
 
     getById: (id: number): Promise<IpcResult<Reimbursement | null>> =>
       ipcRenderer.invoke('reimbursements:getById', id),

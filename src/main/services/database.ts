@@ -91,6 +91,14 @@ const MIGRATIONS = new Map<number, string>([
   ]
 ])
 
+MIGRATIONS.set(5, `
+  ALTER TABLE invoices ADD COLUMN invoice_content TEXT;
+`)
+
+MIGRATIONS.set(6, `
+  ALTER TABLE invoices ADD COLUMN category TEXT;
+`)
+
 // 后续迁移在此添加:
 MIGRATIONS.set(2, `
   ALTER TABLE email_accounts ADD COLUMN mail_folder TEXT NOT NULL DEFAULT 'INBOX';

@@ -127,6 +127,7 @@ export interface InvoiceRow {
   amount: number | null
   tax_amount: number | null
   total_amount: number | null
+  invoice_content: string | null
   file_path: string
   file_type: InvoiceFileType
   file_name: string | null
@@ -136,6 +137,7 @@ export interface InvoiceRow {
   status: InvoiceStatus
   reimbursement_id: number | null
   created_at: string
+  category: string | null
 }
 
 /** 发票 — 渲染进程实体 (camelCase) */
@@ -152,6 +154,7 @@ export interface Invoice {
   amount: number | null
   taxAmount: number | null
   totalAmount: number | null
+  invoiceContent: string | null
   filePath: string
   fileType: InvoiceFileType
   fileName: string | null
@@ -161,6 +164,7 @@ export interface Invoice {
   status: InvoiceStatus
   reimbursementId: number | null
   createdAt: string
+  category: string | null
 }
 
 /** 创建发票参数 */
@@ -176,12 +180,14 @@ export interface CreateInvoiceParams {
   amount?: number
   taxAmount?: number
   totalAmount?: number
+  invoiceContent?: string
   filePath: string
   fileType: InvoiceFileType
   fileName?: string
   source?: InvoiceSource
   emailAccountId?: number
   emailSubject?: string
+  category?: string
 }
 
 /** 发票筛选条件 */
@@ -191,6 +197,27 @@ export interface InvoiceFilters {
   dateTo?: string
   source?: InvoiceSource
   keyword?: string
+  category?: string
+  amountFrom?: number
+  amountTo?: number
+  buyerName?: string
+}
+
+/** 更新发票参数 */
+export interface UpdateInvoiceParams {
+  invoiceNumber?: string
+  invoiceCode?: string
+  invoiceDate?: string
+  invoiceType?: string
+  sellerName?: string
+  sellerTaxId?: string
+  buyerName?: string
+  buyerTaxId?: string
+  amount?: number
+  taxAmount?: number
+  totalAmount?: number
+  invoiceContent?: string
+  category?: string
 }
 
 // ============================================================
@@ -416,6 +443,7 @@ const INVOICE_FIELD_MAP: Record<string, string> = {
   buyer_tax_id: 'buyerTaxId',
   tax_amount: 'taxAmount',
   total_amount: 'totalAmount',
+  invoice_content: 'invoiceContent',
   file_path: 'filePath',
   file_type: 'fileType',
   file_name: 'fileName',
